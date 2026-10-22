@@ -1,4 +1,4 @@
-import logoSkinLaser from "@/assets/skinlaser-logo.png"
+import logoSkinLaser from "../assets/skinlaser-logo.png"
 import { MARCA } from "@/config/brand"
 import { cn } from "@/shared/ui"
 
