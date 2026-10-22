@@ -1,0 +1,142 @@
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Quicksand:wght@500;600;700&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap');
+@import 'tailwindcss';
+
+/* Tema por variables: oscuro (predeterminado) y claro. Cambiar la marca aquí y en src/config/brand.ts. */
+:root,
+[data-tema='oscuro'] {
+  color-scheme: dark;
+  --c-fondo: #0c1117;
+  --c-superficie: #121921;
+  --c-superficie-2: #18212b;
+  --c-superficie-3: #1f2a36;
+  --c-borde: #243040;
+  --c-borde-fuerte: #34445a;
+  --c-texto: #e7ecf2;
+  --c-suave: #a4b0c0;
+  --c-tenue: #6f7d8f;
+  --c-acento: #52c3c6;
+  --c-acento-fuerte: #7fd5d7;
+  --c-sobre-acento: #032527;
+  --c-acento-tenue: rgb(82 195 198 / 0.12);
+  --c-peligro: #f27a6e;
+  --c-peligro-tenue: rgb(242 122 110 / 0.12);
+  --c-aviso: #e8b64f;
+  --c-aviso-tenue: rgb(232 182 79 / 0.12);
+  --c-exito: #5cc58c;
+  --c-exito-tenue: rgb(92 197 140 / 0.12);
+  --c-info: #7aa7f5;
+  --c-info-tenue: rgb(122 167 245 / 0.12);
+  --sombra: 0 1px 0 rgb(255 255 255 / 0.03) inset, 0 12px 32px -12px rgb(0 0 0 / 0.6);
+}
+
+[data-tema='claro'] {
+  color-scheme: light;
+  --c-fondo: #f4f6f8;
+  --c-superficie: #ffffff;
+  --c-superficie-2: #f0f3f6;
+  --c-superficie-3: #e6ebf0;
+  --c-borde: #dde3e9;
+  --c-borde-fuerte: #c3ccd6;
+  --c-texto: #17202b;
+  --c-suave: #4d5b6c;
+  --c-tenue: #7b8898;
+  --c-acento: #12848a;
+  --c-acento-fuerte: #0d686d;
+  --c-sobre-acento: #ffffff;
+  --c-acento-tenue: rgb(18 132 138 / 0.09);
+  --c-peligro: #c2412d;
+  --c-peligro-tenue: rgb(194 65 45 / 0.08);
+  --c-aviso: #a16207;
+  --c-aviso-tenue: rgb(202 138 4 / 0.1);
+  --c-exito: #1f7a4a;
+  --c-exito-tenue: rgb(31 122 74 / 0.08);
+  --c-info: #2f5fc4;
+  --c-info-tenue: rgb(47 95 196 / 0.08);
+  --sombra: 0 1px 2px rgb(16 24 40 / 0.05), 0 12px 28px -14px rgb(16 24 40 / 0.18);
+}
+
+@theme inline {
+  --font-sans: 'IBM Plex Sans', ui-sans-serif, system-ui, sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, monospace;
+  --font-marca: 'Quicksand', 'IBM Plex Sans', ui-sans-serif, sans-serif;
+  --color-fondo: var(--c-fondo);
+  --color-superficie: var(--c-superficie);
+  --color-superficie-2: var(--c-superficie-2);
+  --color-superficie-3: var(--c-superficie-3);
+  --color-borde: var(--c-borde);
+  --color-borde-fuerte: var(--c-borde-fuerte);
+  --color-texto: var(--c-texto);
+  --color-suave: var(--c-suave);
+  --color-tenue: var(--c-tenue);
+  --color-acento: var(--c-acento);
+  --color-acento-fuerte: var(--c-acento-fuerte);
+  --color-sobre-acento: var(--c-sobre-acento);
+  --color-acento-tenue: var(--c-acento-tenue);
+  --color-peligro: var(--c-peligro);
+  --color-peligro-tenue: var(--c-peligro-tenue);
+  --color-aviso: var(--c-aviso);
+  --color-aviso-tenue: var(--c-aviso-tenue);
+  --color-exito: var(--c-exito);
+  --color-exito-tenue: var(--c-exito-tenue);
+  --color-info: var(--c-info);
+  --color-info-tenue: var(--c-info-tenue);
+  --shadow-panel: var(--sombra);
+}
+
+@layer base {
+  html {
+    background: var(--c-fondo);
+    color: var(--c-texto);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    font-feature-settings: 'tnum' 0;
+  }
+  body {
+    min-height: 100vh;
+    font-size: 14.5px;
+    line-height: 1.5;
+  }
+  ::selection {
+    background: var(--c-acento-tenue);
+  }
+  :focus-visible {
+    outline: 2px solid var(--c-acento);
+    outline-offset: 2px;
+  }
+  input,
+  select,
+  textarea {
+    color: inherit;
+  }
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--c-borde-fuerte) transparent;
+  }
+}
+
+@utility num {
+  font-variant-numeric: tabular-nums;
+}
+
+@keyframes aparecer {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes deslizar {
+  from { opacity: 0; transform: translateX(16px); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes brillo {
+  0% { background-position: -200px 0; }
+  100% { background-position: calc(200px + 100%) 0; }
+}
+.animar-aparecer { animation: aparecer 180ms ease-out both; }
+.animar-deslizar { animation: deslizar 200ms ease-out both; }
+.esqueleto {
+  background: linear-gradient(90deg, var(--c-superficie-2) 0, var(--c-superficie-3) 40px, var(--c-superficie-2) 80px);
+  background-size: 200px 100%;
+  animation: brillo 1.4s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .animar-aparecer, .animar-deslizar, .esqueleto { animation: none; }
+}

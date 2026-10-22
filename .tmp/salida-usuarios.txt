@@ -1,0 +1,37 @@
+  expiraEn: s.expiraEn,
+  reenviarDesde: s.reenviarDesde,
+})
+
+async function enviarCodigo(s: SolicitudRegistro) {
+  const texto = s.tipo === 'correo' ? 'confirmar el cambio de su correo' : 'confirmar el cambio de su teléfono'
+  await enviarMensaje({
+    canal: s.canal,
+    destino: s.destino,
+    asunto: 'Código de verificación',
+    cuerpo: `Su código para ${texto} es ${s.codigo}. Vence en ${VIGENCIA_CODIGO_MIN} minutos. No lo comparta con nadie.`,
+    codigo: s.codigo,
+  })
+}
+
+  async guardarPreferencias(token, preferencias) {
+    const u = await usuarioDeToken(token)
+    await db.usuarios.update(u.id, { preferencias })
+    return aUsuario((await db.usuarios.get(u.id))!)
+  },
+  async solicitarEnlaceContrasena(token, modo) {
+    const u = await usuarioDeToken(token)
+    await esperar(400, 700)
+    await enviarEnlaceContrasena(u, modo)
+  },
+  async solicitarCambioCorreo(token, nuevoCorreo, canal) {
+    const u = await usuarioDeToken(token)
+    await esperar(400, 700)
+auth.ts:10:const enlace = (ruta: string, token: string) => `${location.origin}${location.pathname}#${ruta}?token=${token}`
+auth.ts:34:        ? `Hola ${u.nombreUsuario}: recibimos una solicitud para restablecer su contraseña. El enlace vence en 30 minutos. Si no fue usted, ignore este mensaje.`
+auth.ts:35:        : `Hola ${u.nombreUsuario}: para cambiar su contraseña abra el enlace e ingrese su contraseña actual y la nueva. Vence en 30 minutos.`,
+auth.ts:36:    enlace: enlace(ruta, token),
+auth.ts:87:    await enviarMensaje({ canal: 'correo', destino: correo, asunto: 'Bienvenida: verifique su correo', cuerpo: `Hola ${u.nombreUsuario}: su cuenta fue creada. En producción, este correo incluiría un enlace de verificación y la cuenta requeriría aprobación del administrador.` })
+auth.ts:111:    if (!t || t.usado) throw error(ERRORES.noEncontrado, 'El enlace no es válido o ya fue usado. Solicite uno nuevo.')
+auth.ts:112:    if (t.expiraEn < ahora()) throw error({ ...ERRORES.noEncontrado, estado: 410 }, 'El enlace expiró. Solicite uno nuevo.')
+auth.ts:118:    if (!t || t.usado || t.expiraEn < ahora() || t.proposito !== 'recuperacion') throw error({ ...ERRORES.noEncontrado, estado: 410 }, 'El enlace expiró o ya fue usado. Solicite uno nuevo.')
+auth.ts:129:    if (!t || t.usado || t.expiraEn < ahora() || t.usuarioId !== u.id) throw error({ ...ERRORES.noEncontrado, estado: 410 }, 'El enlace de confirmación expiró o no corresponde a su cuenta. Solicite uno nuevo desde su perfil.')

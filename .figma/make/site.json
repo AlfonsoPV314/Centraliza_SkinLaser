@@ -1,0 +1,12 @@
+{
+  "description": "Prototipo del sistema de centralización, procesamiento y disponibilidad de la información clínica.",
+  "robots": {
+    "index": false
+  },
+  "accessibility": {
+    "addBypassLinks": false,
+    "ignoreReducedMotion": false
+  },
+  "title": "Centraliza · Prototipo",
+  "language": "es"
+}
