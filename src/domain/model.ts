@@ -42,8 +42,9 @@ export interface FilaGuardada {
   archivo: string
   numero: number
   tipoPlanilla: TipoPlanilla
-  doc: string
-  tipoDoc: TipoDocumento
+  /** Null solo en planillas de pagos: un pago puede registrarse sin RUN ni pasaporte. */
+  doc: string | null
+  tipoDoc: TipoDocumento | null
   fechaRegistro: string | null
   monto: number | null
   campos: Record<string, ValorCampo>

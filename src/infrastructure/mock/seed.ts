@@ -12,7 +12,7 @@ import { aGuardada, guardarFilas } from "./persistencia"
 import { hashContrasena, uid } from "./util"
 
 export const PREFERENCIAS_INICIALES: Preferencias = {
-  tema: "oscuro",
+  tema: "claro",
   porPagina: 12,
   vistaPlantillas: "tarjetas",
   carpetaDescarga: null,
@@ -35,7 +35,7 @@ export const CUENTAS_DEMO = [
   },
 ]
 
-const VERSION_SEMILLA = 2
+const VERSION_SEMILLA = 3
 
 function prng(semilla: number) {
   let a = semilla

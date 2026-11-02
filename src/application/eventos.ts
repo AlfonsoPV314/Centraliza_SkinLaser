@@ -1,5 +1,5 @@
 // Aviso simple entre módulos: cuando una pantalla modifica datos, el shell (contadores, notificaciones) se refresca.
-import { useEffect } from "react"
+import { onScopeDispose } from "vue"
 
 const oyentes = new Set<() => void>()
 
@@ -8,10 +8,6 @@ export function avisarCambioDatos() {
 }
 
 export function useCambiosDatos(f: () => void) {
-  useEffect(() => {
-    oyentes.add(f)
-    return () => {
-      oyentes.delete(f)
-    }
-  }, [f])
+  oyentes.add(f)
+  onScopeDispose(() => oyentes.delete(f))
 }

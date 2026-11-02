@@ -6,6 +6,7 @@ export type * from "./ingesta"
 export type * from "./datos"
 export type * from "./plantillas"
 export type * from "./reportes"
+export type * from "./auditoria"
 
 import type { AuthApi } from "./auth"
 import type { UsuariosApi } from "./usuarios"
@@ -14,6 +15,7 @@ import type { IngestaApi } from "./ingesta"
 import type { DatosApi } from "./datos"
 import type { PlantillasApi } from "./plantillas"
 import type { ReportesApi } from "./reportes"
+import type { AuditoriaApi } from "./auditoria"
 
 /** Conjunto de clientes de los microservicios. Las vistas solo dependen de esta interfaz. */
 export interface Servicios {
@@ -24,4 +26,5 @@ export interface Servicios {
   datos: DatosApi
   plantillas: PlantillasApi
   reportes: ReportesApi
+  auditoria: AuditoriaApi
 }

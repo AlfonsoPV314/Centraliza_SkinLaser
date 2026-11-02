@@ -3,9 +3,9 @@ import type { Preferencias } from "@/contracts"
 const CLAVE = "centraliza.tema"
 export type Tema = Preferencias["tema"]
 
+/** Tema recordado; el claro es el predeterminado. */
 export function temaGuardado(): Tema {
-  const t = localStorage.getItem(CLAVE)
-  return t === "claro" ? "claro" : "oscuro"
+  return localStorage.getItem(CLAVE) === "oscuro" ? "oscuro" : "claro"
 }
 
 /** Aplica el tema al documento y lo recuerda para las pantallas públicas. */

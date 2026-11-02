@@ -29,13 +29,23 @@ const crudo = (f: FilaProcesada, campo: string) =>
 export const REGLAS: Regla[] = [
   {
     id: "DOC-01",
-    descripcion: "El RUN o pasaporte es obligatorio",
+    descripcion: "El RUN o pasaporte es obligatorio en planillas de pacientes",
     severidad: "error",
     campo: "documento",
     evaluar: (f) =>
-      crudo(f, "documento")
+      f.tipoPlanilla === "pagos" || crudo(f, "documento")
         ? null
         : "No tiene RUN ni pasaporte. Sin este dato no se puede identificar al paciente. Escríbalo aquí para guardar la fila.",
+  },
+  {
+    id: "DOC-04",
+    descripcion: "Un pago sin RUN ni pasaporte no se asocia a ningún paciente",
+    severidad: "advertencia",
+    campo: "documento",
+    evaluar: (f) =>
+      f.tipoPlanilla === "pagos" && !crudo(f, "documento")
+        ? "Pago sin RUN ni pasaporte: se guardará igual, pero no quedará asociado a un paciente."
+        : null,
   },
   {
     id: "DOC-02",

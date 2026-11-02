@@ -12,6 +12,7 @@ import { normalizarTexto } from "@/domain/text"
 import { db, type SolicitudRegistro, type UsuarioRegistro } from "./db"
 import { enviarMensaje } from "./notificaciones"
 import { enviarEnlaceContrasena } from "./auth"
+import { registrarEvento } from "./auditoria"
 import { PREFERENCIAS_INICIALES } from "./seed"
 import {
   aUsuario,
@@ -83,7 +84,7 @@ export const usuariosMock: UsuariosApi = {
     }
   },
   async crear(token, datos) {
-    await exigirAdmin(token)
+    const admin = await exigirAdmin(token)
     await esperar()
     const correo = normalizarCorreo(datos.correo)
     if (!correoValido(correo))
@@ -121,6 +122,7 @@ export const usuariosMock: UsuariosApi = {
       asunto: "Invitación al sistema",
       cuerpo: `Hola ${u.nombreUsuario}: un administrador creó su cuenta. Su contraseña temporal es ${datos.contrasenaTemporal}; cámbiela al ingresar.`,
     })
+    await registrarEvento(admin, "usuario", `Creó la cuenta de ${u.nombreUsuario}`, `Rol: ${u.rol}`)
     return aUsuario(u)
   },
   async actualizar(token, id, cambios) {
@@ -162,6 +164,15 @@ export const usuariosMock: UsuariosApi = {
     await db.usuarios.update(id, patch)
     if (cambios.activo === false)
       await db.sesiones.where("usuarioId").equals(id).delete()
+    await registrarEvento(
+      admin,
+      "usuario",
+      cambios.activo === false
+        ? `Desactivó a ${u.nombreUsuario}`
+        : cambios.activo === true && !u.activo
+          ? `Activó a ${u.nombreUsuario}`
+          : `Editó la cuenta de ${u.nombreUsuario}`,
+    )
     return aUsuario((await db.usuarios.get(id))!)
   },
   async eliminar(token, id) {
@@ -169,7 +180,9 @@ export const usuariosMock: UsuariosApi = {
     await esperar()
     if (id === admin.id)
       throw error(ERRORES.conflicto, "No puede eliminar su propia cuenta.")
+    const u = await db.usuarios.get(id)
     await db.usuarios.delete(id)
+    if (u) await registrarEvento(admin, "usuario", `Eliminó la cuenta de ${u.nombreUsuario}`)
     await db.sesiones.where("usuarioId").equals(id).delete()
   },
   async actualizarPerfil(token, cambios) {

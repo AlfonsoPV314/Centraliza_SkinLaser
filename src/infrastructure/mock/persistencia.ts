@@ -24,8 +24,8 @@ export function aGuardada(
     archivo: f.archivo,
     numero: f.numero,
     tipoPlanilla: f.tipoPlanilla,
-    doc: f.doc!,
-    tipoDoc: f.tipoDoc!,
+    doc: f.doc,
+    tipoDoc: f.tipoDoc,
     fechaRegistro: f.fechaRegistro,
     monto: f.monto,
     campos: f.campos,
@@ -37,7 +37,7 @@ export function aGuardada(
 /** Fusiona los atributos de paciente de una fila en su ficha: los valores nuevos no vacíos actualizan los anteriores. */
 export function fusionarPaciente(
   previo: Paciente | undefined,
-  f: Pick<FilaGuardada, "doc" | "tipoDoc" | "campos">,
+  f: Pick<Paciente, "doc" | "tipoDoc"> & Pick<FilaGuardada, "campos">,
 ): Paciente {
   const campos = { ...(previo?.campos ?? {}) }
   for (const c of CAMPOS_PACIENTE) {
@@ -54,13 +54,18 @@ export async function guardarFilas(
 ) {
   if (!filas.length) return
   await db.filas.bulkPut(filas)
-  const docs = [...new Set(filas.map((f) => f.doc))]
+  // Solo las filas con documento alimentan una ficha de paciente (los pagos pueden venir sin RUN).
+  const conDoc = filas.filter(
+    (f): f is FilaGuardada & Pick<Paciente, "doc" | "tipoDoc"> => !!f.doc && !!f.tipoDoc,
+  )
+  if (!conDoc.length) return
+  const docs = [...new Set(conDoc.map((f) => f.doc))]
   const existentes = await db.pacientes.bulkGet(docs)
   const mapa = new Map<string, Paciente | undefined>(
     docs.map((d, i) => [d, existentes[i]]),
   )
   for (const d of docs) if (!previos.has(d)) previos.set(d, mapa.get(d) ?? null)
-  for (const f of filas) mapa.set(f.doc, fusionarPaciente(mapa.get(f.doc), f))
+  for (const f of conDoc) mapa.set(f.doc, fusionarPaciente(mapa.get(f.doc), f))
   await db.pacientes.bulkPut(
     [...mapa.values()].filter((p): p is Paciente => !!p),
   )

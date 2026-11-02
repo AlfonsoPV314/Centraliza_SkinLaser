@@ -1,6 +1,7 @@
 // Arma la petición de importación a partir de las filas procesadas y las decisiones sobre duplicados.
 import type {
   AccionDuplicado,
+  CombinacionCeldas,
   DecisionDuplicado,
   PeticionImportacion,
 } from "@/contracts"
@@ -13,6 +14,7 @@ import type {
 } from "@/domain/model"
 import { detectarDuplicados } from "@/domain/duplicates"
 import { tieneErrores } from "@/domain/rules"
+import { normalizarTexto } from "@/domain/text"
 
 export interface DuplicadoLote {
   /** Índice de la fila nueva dentro de `validas`. */
@@ -23,6 +25,8 @@ export interface DuplicadoLote {
     indice: number
   }
   accion: AccionDuplicado
+  /** Solo con accion «combinar»: fila resultante (ya revalidada) y lado elegido por campo. */
+  combinada?: { fila: FilaProcesada; combinacion: CombinacionCeldas }
 }
 
 export interface Lote {
@@ -60,30 +64,38 @@ export function armarPeticion(
     if (d.contra.origen !== "archivo") continue
     const actual = representante.get(d.contra.indice) ?? d.contra.indice
     contraparte.set(d.indice, actual)
-    if (d.accion === "conservar_nueva") {
+    if (d.accion === "conservar_nueva" || (d.accion === "combinar" && d.combinada)) {
       superadas.add(actual)
       representante.set(d.contra.indice, d.indice)
     }
   }
   const decisiones: DecisionDuplicado[] = lote.duplicados.map((d) => {
+    // Una combinación sin fila resultante no es válida: queda pendiente para decidir después.
+    const combinar = d.accion === "combinar" && d.combinada ? d.combinada : null
+    const accion: AccionDuplicado =
+      d.accion === "combinar" && !combinar ? "decidir_despues" : d.accion
+    const nueva = combinar?.fila ?? lote.validas[d.indice]
+    const extra = combinar ? { combinacion: combinar.combinacion } : {}
     if (d.contra.origen === "guardado")
       return {
-        nueva: lote.validas[d.indice],
-        accion: d.accion,
+        nueva,
+        accion,
         existenteId: d.contra.fila.id,
         existente: d.contra.fila,
+        ...extra,
       }
     // Las pendientes se comparan con la fila que finalmente queda guardada.
     const contra =
-      d.accion === "decidir_despues"
+      accion === "decidir_despues"
         ? (representante.get(d.contra.indice) ?? d.contra.indice)
         : contraparte.get(d.indice)!
     return {
-      nueva: lote.validas[d.indice],
+      nueva,
       // Una fila elegida como «nueva» que luego fue reemplazada por otra posterior termina descartada.
-      accion: superadas.has(d.indice) ? "conservar_anterior" : d.accion,
+      accion: superadas.has(d.indice) ? "conservar_anterior" : accion,
       existenteId: null,
       existente: lote.validas[contra],
+      ...extra,
     }
   })
   return {
@@ -123,7 +135,8 @@ export function problemasMapeo(
   tipo: TipoPlanilla,
 ): string[] {
   const p: string[] = []
-  if (!mapeo.some((m) => m.destino === "documento"))
+  // Los pagos pueden venir sin RUN; los pacientes no.
+  if (tipo === "pacientes" && !mapeo.some((m) => m.destino === "documento"))
     p.push("Indique qué columna tiene el RUN o pasaporte.")
   if (tipo === "pagos" && !mapeo.some((m) => m.destino === "monto"))
     p.push("Una planilla de pagos necesita la columna de monto.")
@@ -138,3 +151,18 @@ export function problemasMapeo(
       )
   return p
 }
+
+/** Marca como «No importar» las columnas cuyo encabezado está en la lista de ignoradas permanentes. */
+export function aplicarIgnoradas(
+  mapeo: MapeoColumna[],
+  ignoradas: string[],
+): MapeoColumna[] {
+  if (!ignoradas.length) return mapeo
+  const set = new Set(ignoradas.map(normalizarTexto))
+  return mapeo.map((m) =>
+    set.has(normalizarTexto(m.encabezado)) ? { ...m, destino: "ignorar" } : m,
+  )
+}
+
+export const esIgnoradaPermanente = (encabezado: string, ignoradas: string[]) =>
+  ignoradas.some((i) => normalizarTexto(i) === normalizarTexto(encabezado))

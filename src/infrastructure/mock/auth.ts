@@ -1,4 +1,4 @@
-import type { AuthApi, DatosRegistro, Sesion } from "@/contracts/auth"
+import type { AuthApi, Sesion } from "@/contracts/auth"
 import { ERRORES } from "@/contracts/comunes"
 import { SESION } from "@/config/features"
 import {
@@ -10,6 +10,7 @@ import {
 } from "@/domain/contact"
 import { db, type UsuarioRegistro } from "./db"
 import { enviarMensaje } from "./notificaciones"
+import { registrarEvento } from "./auditoria"
 import {
   aUsuario,
   ahora,
@@ -88,6 +89,7 @@ export const authMock: AuthApi = {
         { ...ERRORES.sinPermisos, estado: 423 },
         "Su cuenta está desactivada. Contacte al administrador del sistema.",
       )
+    await registrarEvento(u, "ingreso", "Ingresó al sistema")
     return crearSesion(u)
   },
   async sesionActual(token) {
@@ -104,52 +106,6 @@ export const authMock: AuthApi = {
   async cerrarSesion(token) {
     await esperar(100, 250)
     await db.sesiones.delete(token)
-  },
-  async registrar(datos: DatosRegistro) {
-    await esperar(400, 700)
-    const correo = normalizarCorreo(datos.correo)
-    if (!correoValido(correo))
-      throw error(ERRORES.validacion, "El correo no tiene un formato válido.", {
-        campo: "correo",
-      })
-    if (await db.usuarios.where("correo").equals(correo).count())
-      throw error(ERRORES.conflicto, "Ya existe una cuenta con ese correo.", {
-        campo: "correo",
-      })
-    if (!celularValido(datos.telefono))
-      throw error(
-        ERRORES.validacion,
-        "El teléfono debe ser un celular chileno (+56 9 XXXX XXXX).",
-        { campo: "telefono" },
-      )
-    if (!contrasenaSegura(datos.contrasena))
-      throw error(
-        ERRORES.validacion,
-        "La contraseña no cumple los requisitos de seguridad.",
-        { campo: "contrasena" },
-      )
-    const sal = uid()
-    const u: UsuarioRegistro = {
-      id: uid("u-"),
-      nombreUsuario: datos.nombreUsuario.trim(),
-      correo,
-      telefono: normalizarTelefono(datos.telefono)!,
-      rol: "usuario",
-      activo: true,
-      correoVerificado: false,
-      creadoEn: ahora(),
-      preferencias: { ...PREFERENCIAS_INICIALES },
-      sal,
-      hash: await hashContrasena(datos.contrasena, sal),
-    }
-    await db.usuarios.put(u)
-    await enviarMensaje({
-      canal: "correo",
-      destino: correo,
-      asunto: "Bienvenida: verifique su correo",
-      cuerpo: `Hola ${u.nombreUsuario}: su cuenta fue creada. En producción, este correo incluiría un enlace de verificación y la cuenta requeriría aprobación del administrador.`,
-    })
-    return aUsuario(u)
   },
   async correoDisponible(correo) {
     await esperar(150, 300)

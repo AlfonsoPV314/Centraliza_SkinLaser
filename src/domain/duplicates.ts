@@ -9,11 +9,19 @@ export interface FilaComparable {
   campos: Record<string, { o: string; n: string | null }>
 }
 
-/** Clave de duplicado: RUN/pasaporte normalizado + fecha (y hora, si existe) de registro en PhilaxMed. */
+/**
+ * Clave de duplicado: RUN/pasaporte normalizado + fecha (y hora, si existe) de registro en PhilaxMed.
+ * Los pagos sin documento usan el N° de atención + fecha; sin ninguno de los dos no se puede comparar.
+ */
 export function claveDuplicado(
-  f: Pick<FilaComparable, "doc" | "fechaRegistro">,
+  f: Pick<FilaComparable, "doc" | "fechaRegistro"> & {
+    campos?: FilaComparable["campos"]
+  },
 ): string | null {
-  return f.doc && f.fechaRegistro ? `${f.doc}|${f.fechaRegistro}` : null
+  if (!f.fechaRegistro) return null
+  if (f.doc) return `${f.doc}|${f.fechaRegistro}`
+  const cita = f.campos?.id_cita?.n
+  return cita ? `cita:${cita}|${f.fechaRegistro}` : null
 }
 
 const n = (f: FilaComparable, campo: string) => f.campos[campo]?.n ?? ""
@@ -92,7 +100,7 @@ export interface DetallePago {
 
 export interface CitaConsolidada {
   clave: string
-  doc: string
+  doc: string | null
   fechaRegistro: string | null
   profesional: string
   total: number
@@ -117,7 +125,7 @@ export function consolidarPagos(filas: FilaComparable[]): CitaConsolidada[] {
   filas.forEach((f, i) => {
     if (f.tipoPlanilla !== "pagos") return
     const clave = claveCita(f)
-    if (!clave || !f.doc) return
+    if (!clave) return
     const cita = citas.get(clave) ?? {
       clave,
       doc: f.doc,

@@ -1,17 +1,11 @@
-// Microservicio Go «auth» — base: /auth/v1
+// MS Usuarios y Roles (Go) — autenticación, base: /auth/v1
+// Sin autorregistro: las cuentas solo las crea un administrador (UsuariosApi.crear).
 import type { Usuario } from "./usuarios"
 
 export interface Sesion {
   token: string
   usuario: Usuario
   expiraEn: string // ISO; renovación por actividad
-}
-
-export interface DatosRegistro {
-  nombreUsuario: string
-  correo: string
-  telefono: string // +569XXXXXXXX
-  contrasena: string
 }
 
 export type CanalMensaje = "sms" | "whatsapp"
@@ -25,8 +19,6 @@ export interface AuthApi {
   renovar(token: string): Promise<Sesion>
   /** DELETE /auth/v1/sesiones/actual → 204 */
   cerrarSesion(token: string): Promise<void>
-  /** POST /auth/v1/registro → 201 Usuario | 409 correo-existente | 422 validacion */
-  registrar(datos: DatosRegistro): Promise<Usuario>
   /** GET /auth/v1/registro/correo-disponible?correo= → 200 { disponible } */
   correoDisponible(correo: string): Promise<boolean>
   /** POST /auth/v1/contrasena/recuperacion → 202 (respuesta siempre genérica) */

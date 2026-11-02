@@ -6,6 +6,7 @@ import type { Usuario } from "@/contracts/usuarios"
 import type { Mensaje } from "@/contracts/notificaciones"
 import type { Importacion } from "@/contracts/ingesta"
 import type { DuplicadoPendiente, FilaConError } from "@/contracts/datos"
+import type { EventoAuditoria } from "@/contracts/auditoria"
 
 export interface UsuarioRegistro extends Usuario {
   hash: string
@@ -36,10 +37,23 @@ export interface SolicitudRegistro {
   intentos: number
 }
 export interface ImportacionRegistro
-  extends Omit<Importacion, "sePuedeDeshacer"> {
+  extends Omit<Importacion, "sePuedeDeshacer" | "originales"> {
+  /** Ausente en importaciones creadas antes de guardar los archivos originales. */
+  originales?: string[]
   insertadas: string[]
   reemplazadas: FilaGuardada[]
   pacientesPrevios: { doc: string; previo: Paciente | null }[]
+}
+/** Archivo original subido (MS Gestor Documental): se guarda para descargarlo desde el historial. */
+export interface ArchivoOriginal {
+  id: string
+  importacionId: string
+  nombre: string
+  tipo: string
+  tamano: number
+  sha256: string
+  contenido: Blob
+  subidoEn: string
 }
 export interface Ajuste {
   clave: string
@@ -60,6 +74,8 @@ class BaseDatosPrototipo extends Dexie {
   pendientes!: Table<DuplicadoPendiente, string>
   plantillas!: Table<Plantilla, string>
   ajustes!: Table<Ajuste, string>
+  auditoria!: Table<EventoAuditoria, string>
+  archivos!: Table<ArchivoOriginal, string>
 
   constructor() {
     super("centraliza-prototipo")
@@ -77,6 +93,10 @@ class BaseDatosPrototipo extends Dexie {
       pendientes: "id, importacionId",
       plantillas: "id, nombre, actualizadaEn, eliminadaEn",
       ajustes: "clave",
+    })
+    this.version(2).stores({
+      auditoria: "id, creadoEn, tipo",
+      archivos: "id, importacionId",
     })
   }
 }

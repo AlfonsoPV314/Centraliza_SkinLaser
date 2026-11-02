@@ -1,32 +1,31 @@
 export { cn } from "./cn"
-export { Boton } from "./Boton"
-export {
-  Campo,
-  Entrada,
-  AreaTexto,
-  Selector,
-  Casilla,
-  Interruptor,
-  Segmentado,
-  CampoContrasena,
-  ListaRequisitos,
-} from "./formulario"
-export {
-  Tarjeta,
-  EncabezadoTarjeta,
-  EncabezadoPagina,
-  Insignia,
-  Aviso,
-  Vacio,
-  Esqueleto,
-  Cargando,
-  Pestanas,
-  Paginacion,
-  Dato,
-  Kbd,
-} from "./contenedores"
-export { Dialogo } from "./Dialogo"
-export { ProveedorToasts, useNotificar } from "./Toasts"
-export { SelectorMultiple, type OpcionSelector } from "./SelectorMultiple"
-export { Grafico, useColoresTema, type ColoresTema } from "./Grafico"
-export { EnConstruccion } from "./EnConstruccion"
+export { default as Boton } from "./Boton.vue"
+export { default as Campo } from "./Campo.vue"
+export { default as Entrada } from "./Entrada.vue"
+export { default as AreaTexto } from "./AreaTexto.vue"
+export { default as Selector } from "./Selector.vue"
+export { default as Casilla } from "./Casilla.vue"
+export { default as Interruptor } from "./Interruptor.vue"
+export { default as Segmentado } from "./Segmentado.vue"
+export { default as CampoContrasena } from "./CampoContrasena.vue"
+export { default as ListaRequisitos } from "./ListaRequisitos.vue"
+export { default as Tarjeta } from "./Tarjeta.vue"
+export { default as EncabezadoTarjeta } from "./EncabezadoTarjeta.vue"
+export { default as EncabezadoPagina } from "./EncabezadoPagina.vue"
+export { default as Insignia } from "./Insignia.vue"
+export { default as Aviso } from "./Aviso.vue"
+export { default as Vacio } from "./Vacio.vue"
+export { default as Esqueleto } from "./Esqueleto.vue"
+export { default as Cargando } from "./Cargando.vue"
+export { default as Pestanas } from "./Pestanas.vue"
+export { default as Paginacion } from "./Paginacion.vue"
+export { default as Dato } from "./Dato.vue"
+export { default as Kbd } from "./Kbd.vue"
+export { default as Dialogo } from "./Dialogo.vue"
+export { default as Toasts } from "./Toasts.vue"
+export { default as SelectorMultiple } from "./SelectorMultiple.vue"
+export { default as Grafico } from "./Grafico.vue"
+export { default as Detalles } from "./Detalles.vue"
+export { useColoresTema, type ColoresTema } from "./colores"
+export type { OpcionSelector } from "./tipos"
+export type { Tono } from "./tonos"

@@ -1,4 +1,6 @@
 import type { IngestaApi, Importacion } from "@/contracts/ingesta"
+import { normalizarTexto } from "@/domain/text"
+import { registrarEvento } from "./auditoria"
 import { ERRORES } from "@/contracts/comunes"
 import type { FilaGuardada, Paciente } from "@/domain/model"
 import { db, datosCambiaron, type ImportacionRegistro } from "./db"
@@ -22,14 +24,41 @@ const aImportacion = (
   conteos: r.conteos,
   estado: r.estado,
   sePuedeDeshacer: r.estado === "activa" && r.id === ultimaId,
+  originales: r.originales ?? [],
 })
 
+const CLAVE_IGNORADAS = "columnas-ignoradas"
+
+async function leerIgnoradas(): Promise<string[]> {
+  const v = (await db.ajustes.get(CLAVE_IGNORADAS))?.valor
+  return Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : []
+}
+
+async function huella(contenido: Blob): Promise<string> {
+  if (!crypto?.subtle) return ""
+  const h = await crypto.subtle.digest("SHA-256", await contenido.arrayBuffer())
+  return [...new Uint8Array(h)].map((b) => b.toString(16).padStart(2, "0")).join("")
+}
+
 export const ingestaMock: IngestaApi = {
-  async confirmar(token, p) {
+  async confirmar(token, p, originales = []) {
     const u = await usuarioDeToken(token)
     await esperar(500, 900)
     const id = uid("imp-")
     const creadaEn = ahora()
+    // Las huellas se calculan fuera de la transacción: IndexedDB la cierra si espera trabajo ajeno.
+    const archivos = await Promise.all(
+      originales.map(async (a) => ({
+        id: uid("doc-"),
+        importacionId: id,
+        nombre: a.nombre,
+        tipo: a.contenido.type || "application/octet-stream",
+        tamano: a.contenido.size,
+        sha256: await huella(a.contenido),
+        contenido: a.contenido,
+        subidoEn: creadaEn,
+      })),
+    )
     const previos = new Map<string, Paciente | null>()
     const nuevas: FilaGuardada[] = []
     const reemplazadas: FilaGuardada[] = []
@@ -40,6 +69,7 @@ export const ingestaMock: IngestaApi = {
       descartadas: 0,
       conError: p.conError.length,
       pendientes: 0,
+      combinadas: 0,
     }
 
     await db.transaction(
@@ -51,8 +81,10 @@ export const ingestaMock: IngestaApi = {
         db.importaciones,
         db.filasError,
         db.pendientes,
+        db.archivos,
       ],
       async () => {
+        if (archivos.length) await db.archivos.bulkPut(archivos)
         for (const f of p.insertar) nuevas.push(aGuardada(f, id))
         conteos.nuevas = p.insertar.length
         for (const d of p.decisiones) {
@@ -60,7 +92,7 @@ export const ingestaMock: IngestaApi = {
           else if (d.accion === "guardar_ambas") {
             nuevas.push(aGuardada(d.nueva, id))
             conteos.ambas++
-          } else if (d.accion === "conservar_nueva") {
+          } else if (d.accion === "conservar_nueva" || d.accion === "combinar") {
             if (d.existenteId) {
               const anterior = await db.filas.get(d.existenteId)
               if (anterior) {
@@ -69,7 +101,8 @@ export const ingestaMock: IngestaApi = {
               }
             }
             nuevas.push(aGuardada(d.nueva, id))
-            conteos.reemplazadas++
+            if (d.accion === "combinar") conteos.combinadas++
+            else conteos.reemplazadas++
           } else {
             await db.pendientes.put({
               id: uid("p-"),
@@ -102,6 +135,7 @@ export const ingestaMock: IngestaApi = {
           archivos: p.archivos,
           conteos,
           estado: "activa",
+          originales: archivos.map((a) => a.nombre),
           insertadas: nuevas.map((f) => f.id),
           reemplazadas,
           pacientesPrevios: [...previos].map(([doc, previo]) => ({
@@ -112,6 +146,12 @@ export const ingestaMock: IngestaApi = {
       },
     )
     datosCambiaron()
+    await registrarEvento(
+      u,
+      "importacion",
+      "Confirmó una importación",
+      `${p.archivos.map((a) => a.nombre).join(", ")} · ${conteos.nuevas} nuevas, ${conteos.conError} con error, ${conteos.pendientes} duplicados pendientes`,
+    )
     const r = (await db.importaciones.get(id))!
     return aImportacion(r, id)
   },
@@ -129,7 +169,7 @@ export const ingestaMock: IngestaApi = {
   },
 
   async deshacer(token, id) {
-    await usuarioDeToken(token)
+    const u = await usuarioDeToken(token)
     await esperar(400, 700)
     const imp = await db.importaciones.get(id)
     if (!imp || imp.estado === "deshecha")
@@ -157,5 +197,55 @@ export const ingestaMock: IngestaApi = {
       },
     )
     datosCambiaron()
+    await registrarEvento(
+      u,
+      "deshacer",
+      "Deshizo una importación",
+      imp.archivos.map((a) => a.nombre).join(", "),
+    )
+  },
+
+  async descargarOriginal(token, importacionId, nombre) {
+    await usuarioDeToken(token)
+    await esperar(80, 200)
+    const a = (await db.archivos.where("importacionId").equals(importacionId).toArray()).find(
+      (x) => x.nombre === nombre,
+    )
+    if (!a) throw error(ERRORES.noEncontrado, `No se guardó el archivo original «${nombre}».`)
+    return { nombre: a.nombre, contenido: a.contenido }
+  },
+
+  async columnasIgnoradas(token) {
+    await usuarioDeToken(token)
+    return leerIgnoradas()
+  },
+
+  async fijarColumnasIgnoradas(token, encabezados) {
+    const u = await usuarioDeToken(token)
+    await esperar(80, 200)
+    const previas = await leerIgnoradas()
+    // Una entrada por encabezado normalizado; se guarda el texto tal como lo escribió el usuario.
+    const vistas = new Map<string, string>()
+    for (const e of encabezados) {
+      const t = e.trim()
+      const k = normalizarTexto(t)
+      if (k && !vistas.has(k)) vistas.set(k, t.slice(0, 120))
+    }
+    const lista = [...vistas.values()].sort((a, b) => a.localeCompare(b, "es"))
+    await db.ajustes.put({ clave: CLAVE_IGNORADAS, valor: lista })
+    const agregadas = lista.filter((x) => !previas.includes(x))
+    const quitadas = previas.filter((x) => !lista.includes(x))
+    await registrarEvento(
+      u,
+      "configuracion",
+      "Cambió las columnas que siempre se ignoran",
+      [
+        agregadas.length && `ignora: ${agregadas.join(", ")}`,
+        quitadas.length && `vuelve a importar: ${quitadas.join(", ")}`,
+      ]
+        .filter(Boolean)
+        .join(" · "),
+    )
+    return lista
   },
 }

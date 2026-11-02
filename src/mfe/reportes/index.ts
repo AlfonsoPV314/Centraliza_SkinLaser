@@ -1,19 +1,18 @@
-import { lazy } from "react"
-import { FileChartColumn } from "lucide-react"
+import { FileChartColumn } from "@lucide/vue"
 import type { ModuloFrontend } from "@/shell/modulos"
 
-const Editor = lazy(() => import("./editor/EditorPlantilla"))
+const Editor = () => import("./editor/EditorPlantilla.vue")
 
 export const moduloReportes: ModuloFrontend = {
   id: "reportes",
   nombre: "Reportes",
   privadas: [
-    { ruta: "/reportes", pagina: lazy(() => import("./Plantillas")) },
+    { ruta: "/reportes", pagina: () => import("./Plantillas.vue") },
     { ruta: "/reportes/nueva", pagina: Editor },
     { ruta: "/reportes/:id/editar", pagina: Editor },
     {
       ruta: "/reportes/:id/generar",
-      pagina: lazy(() => import("./generar/GenerarReporte")),
+      pagina: () => import("./generar/GenerarReporte.vue"),
     },
   ],
   navegacion: [

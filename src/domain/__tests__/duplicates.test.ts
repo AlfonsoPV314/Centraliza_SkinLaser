@@ -159,6 +159,13 @@ describe("motor de reglas", () => {
     expect(sinDoc.problemas.map((p) => p.regla)).toContain("DOC-01")
   })
 
+  it("permite pagos sin documento con una advertencia", () => {
+    const pago = fila({ ...base, documento: "", id_cita: "A-9", monto: "1000" }, "pagos")
+    const reglas = pago.problemas.map((p) => p.regla)
+    expect(reglas).not.toContain("DOC-01")
+    expect(pago.problemas.find((p) => p.regla === "DOC-04")?.severidad).toBe("advertencia")
+  })
+
   it("guarda valor original y normalizado", () => {
     const f = fila(
       { ...base, nombre_completo: "  María José  Muñoz " },

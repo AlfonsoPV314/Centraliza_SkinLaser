@@ -1,81 +1,94 @@
 import {
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
-  type DependencyList,
-  type RefObject,
-} from "react"
+  onScopeDispose,
+  ref,
+  shallowRef,
+  toValue,
+  watch,
+  type MaybeRefOrGetter,
+  type Ref,
+  type WatchSource,
+} from "vue"
 
-/** Ejecuta una carga asíncrona y expone su estado. Ignora respuestas obsoletas. */
-export function useCarga<T>(cargar: () => Promise<T>, deps: DependencyList) {
-  const [estado, setEstado] = useState<{
-    datos: T | null
-    cargando: boolean
-    error: unknown
-  }>({ datos: null, cargando: true, error: null })
-  const turno = useRef(0)
-  const ejecutar = useCallback(async (silencioso = false) => {
-    const t = ++turno.current
-    if (!silencioso) setEstado((e) => ({ ...e, cargando: true, error: null }))
-    try {
-      const datos = await cargar()
-      if (t === turno.current)
-        setEstado({ datos, cargando: false, error: null })
-    } catch (error) {
-      if (t === turno.current)
-        setEstado((e) => ({ ...e, cargando: false, error }))
+/** Ejecuta una carga asíncrona y expone su estado. Ignora respuestas obsoletas y recarga al cambiar las fuentes. */
+export function useCarga<T>(
+  cargar: () => Promise<T>,
+  fuentes: WatchSource[] = [],
+) {
+  const datos = shallowRef<T | null>(null) as Ref<T | null>
+  const cargando = ref(true)
+  const error = shallowRef<unknown>(null)
+  let turno = 0
+  const recargar = async (silencioso = false) => {
+    const t = ++turno
+    if (!silencioso) {
+      cargando.value = true
+      error.value = null
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, deps)
-  useEffect(() => {
-    ejecutar()
-  }, [ejecutar])
-  return {
-    ...estado,
-    recargar: ejecutar,
-    setDatos: (f: (d: T | null) => T | null) =>
-      setEstado((e) => ({ ...e, datos: f(e.datos) })),
+    try {
+      const d = await cargar()
+      if (t === turno) {
+        datos.value = d
+        cargando.value = false
+        error.value = null
+      }
+    } catch (e) {
+      if (t === turno) {
+        cargando.value = false
+        error.value = e
+      }
+    }
   }
+  if (fuentes.length) watch(fuentes, () => recargar(), { immediate: true })
+  else recargar()
+  return { datos, cargando, error, recargar }
 }
 
 export function useClickFuera(
-  ref: RefObject<HTMLElement | null>,
+  el: Ref<HTMLElement | null | undefined>,
   alSalir: () => void,
-  activo = true,
+  activo: MaybeRefOrGetter<boolean> = true,
 ) {
-  useEffect(() => {
-    if (!activo) return
-    const f = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) alSalir()
-    }
-    document.addEventListener("mousedown", f)
-    return () => document.removeEventListener("mousedown", f)
-  }, [ref, alSalir, activo])
+  const f = (e: MouseEvent) => {
+    if (!toValue(activo)) return
+    if (el.value && !el.value.contains(e.target as Node)) alSalir()
+  }
+  document.addEventListener("mousedown", f)
+  onScopeDispose(() => document.removeEventListener("mousedown", f))
 }
 
-export function useRetardo<T>(valor: T, ms = 300): T {
-  const [v, setV] = useState(valor)
-  useEffect(() => {
-    const t = setTimeout(() => setV(valor), ms)
-    return () => clearTimeout(t)
-  }, [valor, ms])
+export function useRetardo<T>(valor: MaybeRefOrGetter<T>, ms = 300): Ref<T> {
+  const v = shallowRef(toValue(valor)) as Ref<T>
+  let t: ReturnType<typeof setTimeout> | undefined
+  watch(
+    () => toValue(valor),
+    (n) => {
+      clearTimeout(t)
+      t = setTimeout(() => (v.value = n), ms)
+    },
+  )
+  onScopeDispose(() => clearTimeout(t))
   return v
 }
 
 /** Cuenta regresiva en segundos hasta una fecha ISO (o 0). */
-export function useCuentaRegresiva(hasta: string | null | undefined): number {
-  const calcular = () =>
-    hasta
-      ? Math.max(0, Math.ceil((new Date(hasta).getTime() - Date.now()) / 1000))
-      : 0
-  const [s, setS] = useState(calcular)
-  useEffect(() => {
-    setS(calcular())
-    if (!hasta) return
-    const i = setInterval(() => setS(calcular()), 1000)
-    return () => clearInterval(i)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [hasta])
+export function useCuentaRegresiva(
+  hasta: MaybeRefOrGetter<string | null | undefined>,
+): Ref<number> {
+  const calcular = () => {
+    const h = toValue(hasta)
+    return h ? Math.max(0, Math.ceil((new Date(h).getTime() - Date.now()) / 1000)) : 0
+  }
+  const s = ref(calcular())
+  let i: ReturnType<typeof setInterval> | undefined
+  watch(
+    () => toValue(hasta),
+    (h) => {
+      clearInterval(i)
+      s.value = calcular()
+      if (h) i = setInterval(() => (s.value = calcular()), 1000)
+    },
+    { immediate: true },
+  )
+  onScopeDispose(() => clearInterval(i))
   return s
 }

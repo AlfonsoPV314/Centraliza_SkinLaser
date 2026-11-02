@@ -22,6 +22,8 @@ export function resumenConteos(c: ConteosImportacion): string {
   if (c.nuevas) partes.push(plural(c.nuevas, "fila nueva", "filas nuevas"))
   if (c.reemplazadas)
     partes.push(plural(c.reemplazadas, "reemplazada", "reemplazadas"))
+  if (c.combinadas)
+    partes.push(plural(c.combinadas, "combinada", "combinadas"))
   if (c.ambas)
     partes.push(
       `${plural(c.ambas, "duplicado guardado", "duplicados guardados")} igual`,

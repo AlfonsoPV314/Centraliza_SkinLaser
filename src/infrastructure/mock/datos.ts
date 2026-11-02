@@ -22,6 +22,10 @@ import { normalizarTexto } from "@/domain/text"
 import { db, datosCambiaron, versionDatos } from "./db"
 import { aGuardada, guardarFilas } from "./persistencia"
 import { ahora, error, esperar, uid, usuarioDeToken } from "./util"
+import { registrarEvento } from "./auditoria"
+
+const describirFila = (f: { archivo: string; numero: number }) =>
+  `${f.archivo}, fila ${f.numero}`
 
 export async function catalogoCompleto(): Promise<ColumnaCatalogo[]> {
   const extras = await db.columnas.toArray()
@@ -44,7 +48,7 @@ async function registrosBase(
   const mp = new Map(pacientes.map((p) => [p.doc, p]))
   const mc = new Map(catalogo.map((c) => [c.clave, c]))
   let registros = filas.map((f) =>
-    aplanarFila(f, mp.get(f.doc), mc, campoFecha),
+    aplanarFila(f, f.doc ? mp.get(f.doc) : undefined, mc, campoFecha),
   )
   if (unidad === "citas") registros = registrosACitas(registros, campoFecha)
   cache = { clave, registros }
@@ -170,7 +174,7 @@ export const datosMock: DatosApi = {
         (f) =>
           !nq ||
           normalizarTexto(
-            `${f.doc} ${f.campos.nombre_completo?.o ?? ""} ${f.campos.concepto?.o ?? ""} ${f.archivo}`,
+            `${f.doc ?? ""} ${f.campos.nombre_completo?.o ?? ""} ${f.campos.concepto?.o ?? ""} ${f.archivo}`,
           ).includes(nq),
       )
       .sort((a, b) =>
@@ -189,7 +193,7 @@ export const datosMock: DatosApi = {
     return db.filasError.toArray()
   },
   async corregirFila(token, id, fila) {
-    await usuarioDeToken(token)
+    const u = await usuarioDeToken(token)
     await esperar(250, 450)
     const reg = await db.filasError.get(id)
     if (!reg)
@@ -233,29 +237,48 @@ export const datosMock: DatosApi = {
       },
     )
     datosCambiaron()
+    await registrarEvento(
+      u,
+      "datos",
+      resultado === "guardada" ? "Corrigió y guardó una fila" : "Corrigió una fila que resultó duplicada",
+      describirFila(fila),
+    )
     return resultado
   },
   async descartarFilaConError(token, id) {
-    await usuarioDeToken(token)
+    const u = await usuarioDeToken(token)
     await esperar()
+    const reg = await db.filasError.get(id)
     await db.filasError.delete(id)
     datosCambiaron()
+    if (reg) await registrarEvento(u, "datos", "Descartó una fila con error", describirFila(reg.fila))
   },
   async duplicadosPendientes(token) {
     await usuarioDeToken(token)
     await esperar(120, 260)
     return db.pendientes.toArray()
   },
-  async resolverDuplicado(token, id, accion) {
-    await usuarioDeToken(token)
+  async resolverDuplicado(token, id, accion, combinada) {
+    const u = await usuarioDeToken(token)
     await esperar()
     const p = await db.pendientes.get(id)
     if (!p) throw error(ERRORES.noEncontrado, "Este duplicado ya fue resuelto.")
+    if (accion === "combinar") {
+      if (!combinada)
+        throw error(ERRORES.validacion, "Falta la fila combinada.")
+      if (tieneErrores(combinada.fila))
+        throw error(
+          ERRORES.validacion,
+          "La combinación elegida deja la fila con errores. Elija otros valores.",
+        )
+    }
+    const reemplaza = accion === "conservar_nueva" || accion === "combinar"
+    const aGuardar = accion === "combinar" ? combinada!.fila : p.nueva
     await db.transaction(
       "rw",
       [db.filas, db.pacientes, db.pendientes, db.importaciones],
       async () => {
-        if (accion === "conservar_nueva" && p.existenteId) {
+        if (reemplaza && p.existenteId) {
           const anterior = await db.filas.get(p.existenteId)
           if (anterior) {
             await db.filas.delete(anterior.id)
@@ -269,12 +292,30 @@ export const datosMock: DatosApi = {
         if (accion !== "conservar_anterior")
           await guardarCorregida(
             p.importacionId,
-            aGuardada(p.nueva, p.importacionId),
+            aGuardada(aGuardar, p.importacionId),
           )
         await db.pendientes.delete(id)
       },
     )
     datosCambiaron()
+    const ACCIONES = {
+      conservar_anterior: "conservó la versión guardada",
+      conservar_nueva: "usó la versión nueva",
+      guardar_ambas: "guardó ambas versiones",
+      combinar: "combinó ambas versiones",
+    }
+    const anteriores = combinada
+      ? Object.entries(combinada.combinacion)
+          .filter(([, lado]) => lado === "anterior")
+          .map(([c]) => c)
+      : []
+    await registrarEvento(
+      u,
+      "datos",
+      `Resolvió un duplicado: ${ACCIONES[accion]}`,
+      describirFila(p.nueva) +
+        (anteriores.length ? ` · de la versión guardada: ${anteriores.join(", ")}` : ""),
+    )
   },
   async pacientesIncompletos(token) {
     await usuarioDeToken(token)
@@ -284,7 +325,7 @@ export const datosMock: DatosApi = {
       .filter((p) => p.faltantes.length > 0)
   },
   async actualizarPaciente(token, doc, campos) {
-    await usuarioDeToken(token)
+    const u = await usuarioDeToken(token)
     await esperar()
     const p = await db.pacientes.get(doc)
     if (!p) throw error(ERRORES.noEncontrado, "El paciente ya no existe.")
@@ -306,6 +347,12 @@ export const datosMock: DatosApi = {
     }
     await db.pacientes.put({ ...p, campos: nuevos, actualizadoEn: ahora() })
     datosCambiaron()
+    await registrarEvento(
+      u,
+      "datos",
+      "Completó datos de un paciente",
+      Object.keys(campos).filter((c) => campos[c].trim()).join(", "),
+    )
   },
   async consultar(token, c) {
     await usuarioDeToken(token)

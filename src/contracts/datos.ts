@@ -10,7 +10,7 @@ import type {
 } from "../domain/model"
 import type { Grupo } from "../domain/filters"
 import type { RangoFechas } from "../domain/ranges"
-import type { AccionDuplicado } from "./ingesta"
+import type { AccionDuplicado, CombinacionCeldas } from "./ingesta"
 
 export interface EstadoDatos {
   filas: number
@@ -80,11 +80,12 @@ export interface DatosApi {
 
   /** GET /datos/v1/duplicados-pendientes */
   duplicadosPendientes(token: string): Promise<DuplicadoPendiente[]>
-  /** POST /datos/v1/duplicados-pendientes/{id}/resolver { accion } */
+  /** POST /datos/v1/duplicados-pendientes/{id}/resolver { accion, combinada?, combinacion? } */
   resolverDuplicado(
     token: string,
     id: string,
     accion: Exclude<AccionDuplicado, "decidir_despues">,
+    combinada?: { fila: FilaProcesada; combinacion: CombinacionCeldas },
   ): Promise<void>
 
   /** GET /datos/v1/pacientes/incompletos */

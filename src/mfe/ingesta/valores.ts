@@ -51,3 +51,26 @@ export function crudoATexto(v: unknown): string {
   if (v instanceof Date) return v.toLocaleDateString("es-CL")
   return String(v)
 }
+
+/** Tipos de las columnas adicionales del catálogo, para volver a validar filas. */
+export function tiposExtraDe(
+  catalogo?: ColumnaCatalogo[] | null,
+): Record<string, TipoCampo> {
+  return Object.fromEntries(
+    (catalogo ?? []).filter((c) => c.origen === "extra").map((c) => [c.clave, c.tipo]),
+  )
+}
+
+/** Nombre visible de una fila (paciente, documento o número de fila). */
+export function nombreDeFila(f: {
+  campos: Record<string, ValorCampo>
+  doc: string | null
+  numero?: number
+}): string {
+  return (
+    f.campos.nombre_completo?.o ||
+    [f.campos.nombres?.o, f.campos.apellido_paterno?.o].filter(Boolean).join(" ") ||
+    (f.doc ? mostrarValor("documento", { o: f.doc, n: f.doc }) : "") ||
+    (f.numero ? `Fila ${f.numero}` : "Sin nombre")
+  )
+}

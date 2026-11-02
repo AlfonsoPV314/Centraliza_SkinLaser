@@ -1,6 +1,7 @@
 // Backend simulado del prototipo: implementa los contratos de los microservicios sobre IndexedDB.
 import type { Servicios } from "@/contracts"
 import { authMock } from "./auth"
+import { auditoriaMock } from "./auditoria"
 import { datosMock } from "./datos"
 import { ingestaMock } from "./ingesta"
 import { notificacionesMock } from "./notificaciones"
@@ -22,5 +23,6 @@ export async function crearServiciosMock(): Promise<Servicios> {
     datos: datosMock,
     plantillas: plantillasMock,
     reportes: reportesMock,
+    auditoria: auditoriaMock,
   }
 }
