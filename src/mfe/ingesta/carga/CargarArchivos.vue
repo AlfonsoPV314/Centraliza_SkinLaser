@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, shallowRef } from "vue"
-import { CheckCircle2, RotateCcw, Upload, X } from "@lucide/vue"
+import { CheckCircle2, ListFilter, Upload, X } from "@lucide/vue"
 import { avisarCambioDatos, mensajeError, useInformarError, useServicios, useUsuario, useNotificar } from "@/application"
 import type { Importacion, PeticionImportacion } from "@/contracts"
 import { EXTENSIONES_PERMITIDAS, LIMITE_ARCHIVO_MB } from "@/config/features"
@@ -16,7 +16,8 @@ import {
   validarArchivo,
   type AnalisisHoja,
 } from "@/infrastructure/ingesta/lector"
-import { Aviso, Boton, Detalles, EncabezadoPagina, Tarjeta, cn } from "@/shared/ui"
+import { Aviso, Boton, EncabezadoPagina, Tarjeta, cn } from "@/shared/ui"
+import ColumnasExcluidas from "./ColumnasExcluidas.vue"
 import DecisionRevision from "./DecisionRevision.vue"
 import MapeoHoja from "./MapeoHoja.vue"
 import ResultadoCarga from "./ResultadoCarga.vue"
@@ -27,6 +28,7 @@ import {
   clasificar,
   columnasExtraDe,
   problemasMapeo,
+  sincronizarIgnoradas,
   type Lote,
 } from "./preparar"
 import type { HojaElegida } from "./tipos"
@@ -53,6 +55,8 @@ const arrastrando = ref(false)
 const entrada = ref<HTMLInputElement>()
 const catalogo = shallowRef<ColumnaCatalogo[] | null>(null)
 const ignoradas = ref<string[]>([])
+const editandoExcluidas = ref(false)
+const guardandoExcluidas = ref(false)
 /** Paso desde el que se llegó a «guardando», para volver allí si falla. */
 const pasoPrevio = ref<Paso>("decidir")
 
@@ -153,17 +157,22 @@ async function cambiarEncabezado(h: HojaElegida, fila: number) {
   }
 }
 
-async function guardarIgnoradas(lista: string[], aviso: string) {
+async function guardarIgnoradas(lista: string[], aviso: string): Promise<boolean> {
+  const previas = ignoradas.value
   try {
     ignoradas.value = await s.ingesta.fijarColumnasIgnoradas(token.value, lista)
-    // Aplica la lista a las hojas abiertas sin tocar las columnas que el usuario ya cambió.
+    // Aplica la lista a las hojas abiertas: excluye las nuevas coincidencias y devuelve a su sugerencia
+    // las columnas que solo estaban excluidas por un filtro quitado.
     hojas.value = hojas.value.map((h) => {
-      const mapeo = aplicarIgnoradas(h.mapeo, ignoradas.value)
-      return mapeo === h.mapeo ? h : { ...h, mapeo, tipoPlanilla: detectarTipoPlanilla(mapeo) }
+      const mapeo = sincronizarIgnoradas(h.mapeo, h.analisis.mapeo, previas, ignoradas.value)
+      if (mapeo === h.mapeo) return h
+      return { ...h, mapeo, tipoPlanilla: h.tipoManual ? h.tipoPlanilla : detectarTipoPlanilla(mapeo) }
     })
     notificar({ tono: "exito", titulo: aviso })
+    return true
   } catch (e) {
     informar(e, "No se pudo guardar la configuración")
+    return false
   }
 }
 const ignorarSiempre = (encabezado: string) =>
@@ -171,11 +180,12 @@ const ignorarSiempre = (encabezado: string) =>
     [...ignoradas.value, encabezado],
     `«${encabezado}» se ignorará en las próximas cargas`,
   )
-const restaurarIgnorada = (encabezado: string) =>
-  guardarIgnoradas(
-    ignoradas.value.filter((x) => x !== encabezado),
-    `«${encabezado}» volverá a ofrecerse para importar`,
-  )
+async function guardarExcluidas(lista: string[]) {
+  guardandoExcluidas.value = true
+  const ok = await guardarIgnoradas(lista, "Lista de columnas excluidas actualizada")
+  guardandoExcluidas.value = false
+  if (ok) editandoExcluidas.value = false
+}
 
 async function procesar() {
   paso.value = "procesando"
@@ -382,6 +392,25 @@ const sinPendientes = computed(
         </div>
       </div>
 
+      <div class="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 px-1">
+        <p class="text-[13px] text-tenue">
+          <template v-if="ignoradas.length">
+            {{ ignoradas.length === 1 ? "1 columna se excluye" : `${ignoradas.length} columnas se excluyen` }}
+            de todas las importaciones.
+          </template>
+          <template v-else>Ninguna columna se excluye por defecto.</template>
+        </p>
+        <Boton
+          tamano="sm"
+          variante="fantasma"
+          :icono="ListFilter"
+          :disabled="paso === 'procesando'"
+          @click="editandoExcluidas = true"
+        >
+          Editar columnas excluidas
+        </Boton>
+      </div>
+
       <Aviso
         v-if="rechazos.length"
         tono="peligro"
@@ -441,32 +470,13 @@ const sinPendientes = computed(
         </div>
       </section>
 
-      <Detalles
-        v-if="ignoradas.length"
-        :resumen="`Columnas que siempre se ignoran (${ignoradas.length})`"
-      >
-        <p class="mb-2 text-[12.5px] text-tenue">
-          Se marcan como «No importar» al leer cualquier planilla. Puede volver a importarlas cuando quiera.
-        </p>
-        <ul class="flex flex-wrap gap-2">
-          <li
-            v-for="c in ignoradas"
-            :key="c"
-            class="flex items-center gap-1 rounded-full border border-borde bg-superficie py-0.5 pr-1 pl-3 text-[12.5px]"
-          >
-            {{ c }}
-            <button
-              type="button"
-              class="flex size-6 items-center justify-center rounded-full text-tenue hover:bg-superficie-3 hover:text-texto"
-              :aria-label="`Volver a importar «${c}»`"
-              :title="`Volver a importar «${c}»`"
-              @click="restaurarIgnorada(c)"
-            >
-              <RotateCcw class="size-3.5" />
-            </button>
-          </li>
-        </ul>
-      </Detalles>
+      <ColumnasExcluidas
+        :abierto="editandoExcluidas"
+        :ignoradas="ignoradas"
+        :guardando="guardandoExcluidas"
+        @cerrar="editandoExcluidas = false"
+        @guardar="guardarExcluidas"
+      />
 
       <div
         v-if="hojas.length"

@@ -103,7 +103,15 @@ export const procesarHoja = (
   alAvanzar?: (p: number) => void,
 ) =>
   enviar<FilaProcesada[]>(
-    { tipo: "procesar", archivoId, hoja, filaEncabezado, mapeo, tipoPlanilla },
+    {
+      tipo: "procesar",
+      archivoId,
+      hoja,
+      filaEncabezado,
+      // El mapeo suele venir de un estado reactivo (Proxy), que el worker no puede clonar.
+      mapeo: mapeo.map((m) => ({ ...m })),
+      tipoPlanilla,
+    },
     [],
     alAvanzar,
   )

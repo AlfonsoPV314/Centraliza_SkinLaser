@@ -136,8 +136,10 @@ export function problemasMapeo(
 ): string[] {
   const p: string[] = []
   // Los pagos pueden venir sin RUN; los pacientes no.
-  if (tipo === "pacientes" && !mapeo.some((m) => m.destino === "documento"))
-    p.push("Indique qué columna tiene el RUN o pasaporte.")
+  if (faltaDocumento(mapeo, tipo))
+    p.push(
+      "Indique qué columna contiene el RUN o pasaporte: elija «RUN / pasaporte» en «Se guarda como».",
+    )
   if (tipo === "pagos" && !mapeo.some((m) => m.destino === "monto"))
     p.push("Una planilla de pagos necesita la columna de monto.")
   const usados = new Map<string, number>()
@@ -152,17 +154,54 @@ export function problemasMapeo(
   return p
 }
 
-/** Marca como «No importar» las columnas cuyo encabezado está en la lista de ignoradas permanentes. */
+export const faltaDocumento = (mapeo: MapeoColumna[], tipo: TipoPlanilla) =>
+  tipo === "pacientes" && !mapeo.some((m) => m.destino === "documento")
+
+/** Forma comparable de un encabezado o filtro: sin tildes, en minúsculas y con espacios simples. */
+export const claveFiltro = (texto: string) => normalizarTexto(texto).replace(/\s+/g, " ").trim()
+
+export const esIgnoradaPermanente = (encabezado: string, ignoradas: string[]) => {
+  const k = claveFiltro(encabezado)
+  return ignoradas.some((i) => claveFiltro(i) === k)
+}
+
+/** Marca como «No importar» las columnas cuyo encabezado coincide con un filtro predeterminado. */
 export function aplicarIgnoradas(
   mapeo: MapeoColumna[],
   ignoradas: string[],
 ): MapeoColumna[] {
   if (!ignoradas.length) return mapeo
-  const set = new Set(ignoradas.map(normalizarTexto))
+  const set = new Set(ignoradas.map(claveFiltro))
   return mapeo.map((m) =>
-    set.has(normalizarTexto(m.encabezado)) ? { ...m, destino: "ignorar" } : m,
+    set.has(claveFiltro(m.encabezado)) ? { ...m, destino: "ignorar" } : m,
   )
 }
 
-export const esIgnoradaPermanente = (encabezado: string, ignoradas: string[]) =>
-  ignoradas.some((i) => normalizarTexto(i) === normalizarTexto(encabezado))
+/**
+ * Aplica una lista de filtros editada a un mapeo abierto: las columnas que ahora coinciden pasan a
+ * «No importar» y las que solo estaban excluidas por un filtro quitado vuelven a su sugerencia original.
+ */
+export function sincronizarIgnoradas(
+  mapeo: MapeoColumna[],
+  sugerido: MapeoColumna[],
+  previas: string[],
+  nuevas: string[],
+): MapeoColumna[] {
+  let cambio = false
+  const r = mapeo.map((m) => {
+    if (esIgnoradaPermanente(m.encabezado, nuevas)) {
+      if (m.destino === "ignorar") return m
+      cambio = true
+      return { ...m, destino: "ignorar" as const }
+    }
+    if (m.destino === "ignorar" && esIgnoradaPermanente(m.encabezado, previas)) {
+      const original = sugerido.find((o) => o.indice === m.indice)
+      if (original && original.destino !== "ignorar") {
+        cambio = true
+        return { ...original }
+      }
+    }
+    return m
+  })
+  return cambio ? r : mapeo
+}

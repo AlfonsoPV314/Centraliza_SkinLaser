@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
 import type { AccionDuplicado } from "@/contracts"
-import type { MapeoColumna } from "@/domain/columns"
+import { detectarTipoPlanilla, sugerirMapeo, type MapeoColumna } from "@/domain/columns"
 import { claveDuplicado } from "@/domain/duplicates"
 import type { FilaGuardada, TipoPlanilla } from "@/domain/model"
 import { procesarFila } from "@/domain/rules"
@@ -8,7 +8,10 @@ import {
   armarPeticion,
   clasificar,
   columnasExtraDe,
+  aplicarIgnoradas,
+  esIgnoradaPermanente,
   problemasMapeo,
+  sincronizarIgnoradas,
   type Lote,
 } from "../preparar"
 
@@ -243,5 +246,37 @@ describe("validación de mapeos", () => {
       { clave: "sucursal", etiqueta: "Sucursal", tipo: "texto" },
       { clave: "box", etiqueta: "Box", tipo: "numero" },
     ])
+  })
+})
+
+describe("columnas excluidas por defecto", () => {
+  const mapeo = sugerirMapeo(["RUT", "Teléfono", "Observación Interna"])
+
+  it("compara sin mayúsculas ni tildes", () => {
+    expect(esIgnoradaPermanente("OBSERVACIÓN  interna", ["observacion interna"])).toBe(true)
+    expect(esIgnoradaPermanente("Teléfono", ["TELEFONO"])).toBe(true)
+    expect(esIgnoradaPermanente("Teléfono 2", ["telefono"])).toBe(false)
+    const r = aplicarIgnoradas(mapeo, ["telefono"])
+    expect(r.map((m) => m.destino)).toEqual(["documento", "ignorar", "extra"])
+  })
+
+  it("restaura la sugerencia al quitar un filtro y respeta los cambios del usuario", () => {
+    const excluido = aplicarIgnoradas(mapeo, ["telefono"])
+    const restaurado = sincronizarIgnoradas(excluido, mapeo, ["telefono"], [])
+    expect(restaurado[1].destino).toBe(mapeo[1].destino)
+    // Una columna que el usuario marcó a mano y sin filtro previo se mantiene.
+    const manual = excluido.map((m, i) => (i === 2 ? { ...m, destino: "ignorar" as const } : m))
+    expect(sincronizarIgnoradas(manual, mapeo, ["telefono"], ["telefono"])).toBe(manual)
+  })
+})
+
+describe("detección de columnas y tipo de planilla", () => {
+  it("reconoce «Rut cliente» como RUN", () => {
+    expect(sugerirMapeo(["Rut cliente", "Monto"])[0].destino).toBe("documento")
+  })
+
+  it("no sugiere pagos si falta la columna de RUN", () => {
+    expect(detectarTipoPlanilla(sugerirMapeo(["Paciente", "Monto"]))).toBe("pacientes")
+    expect(detectarTipoPlanilla(sugerirMapeo(["RUT", "Monto"]))).toBe("pagos")
   })
 })

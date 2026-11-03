@@ -9,5 +9,7 @@ export interface HojaElegida {
   analisis: AnalisisHoja
   incluir: boolean
   tipoPlanilla: TipoPlanilla
+  /** El usuario eligió el tipo a mano: deja de recalcularse al cambiar columnas. */
+  tipoManual?: boolean
   mapeo: MapeoColumna[]
 }

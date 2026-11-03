@@ -36,6 +36,10 @@ export const CAMPOS_CONOCIDOS = {
       "run",
       "rut_paciente",
       "run_paciente",
+      "rut_cliente",
+      "run_cliente",
+      "rut_del_cliente",
+      "rut_del_paciente",
       "documento",
       "n_documento",
       "numero_documento",
@@ -60,6 +64,9 @@ export const CAMPOS_CONOCIDOS = {
       "paciente",
       "nombre_paciente",
       "nombre_del_paciente",
+      "cliente",
+      "nombre_cliente",
+      "nombre_del_cliente",
     ],
   },
   fecha_nacimiento: {
@@ -336,9 +343,14 @@ export function sugerirMapeo(
   })
 }
 
-/** Una planilla es «de pagos» si trae monto o medio de pago. */
+/**
+ * Una planilla se sugiere «de pagos» si trae monto o medio de pago y además una columna de RUN.
+ * Sin RUN se sugiere «pacientes», para que el usuario indique la columna o declare explícitamente
+ * que se trata de pagos sin RUT asociado.
+ */
 export function detectarTipoPlanilla(mapeo: MapeoColumna[]): TipoPlanilla {
-  return mapeo.some((m) => m.destino === "monto" || m.destino === "medio_pago")
+  return mapeo.some((m) => m.destino === "documento") &&
+    mapeo.some((m) => m.destino === "monto" || m.destino === "medio_pago")
     ? "pagos"
     : "pacientes"
 }

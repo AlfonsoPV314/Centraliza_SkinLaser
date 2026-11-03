@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from "vue"
-import { ChevronDown, EyeOff, FileSpreadsheet, TriangleAlert } from "@lucide/vue"
+import { ChevronDown, EyeOff, FileSpreadsheet, ListFilter, TriangleAlert } from "@lucide/vue"
 import {
   CAMPOS_CONOCIDOS,
   LISTA_CAMPOS_CONOCIDOS,
@@ -9,8 +9,8 @@ import {
 } from "@/domain/columns"
 import type { TipoCampo, TipoPlanilla } from "@/domain/model"
 import { claveDesdeEncabezado, limpiarOriginal } from "@/domain/text"
-import { Casilla, Insignia, Segmentado, Selector, cn } from "@/shared/ui"
-import { esIgnoradaPermanente, problemasMapeo } from "./preparar"
+import { Boton, Casilla, Insignia, Segmentado, Selector, cn } from "@/shared/ui"
+import { esIgnoradaPermanente, faltaDocumento, problemasMapeo } from "./preparar"
 import type { HojaElegida } from "./tipos"
 
 const p = defineProps<{
@@ -46,6 +46,9 @@ const a = computed(() => p.hoja.analisis)
 const problemas = computed(() =>
   p.hoja.incluir ? problemasMapeo(p.hoja.mapeo, p.hoja.tipoPlanilla) : [],
 )
+const sinDocumento = computed(() => p.hoja.incluir && faltaDocumento(p.hoja.mapeo, p.hoja.tipoPlanilla))
+// problemasMapeo informa primero la falta de RUN; ese caso se muestra aparte, con una guía.
+const otrosProblemas = computed(() => (sinDocumento.value ? problemas.value.slice(1) : problemas.value))
 const ejemplos = computed(() =>
   a.value.vistaPrevia.slice(a.value.filaEncabezado + 1, a.value.filaEncabezado + 4),
 )
@@ -79,8 +82,10 @@ function cambiarDestino(indice: number, valor: string) {
     }
     return { ...m, destino: valor as MapeoColumna["destino"] }
   })
-  cambiar({ mapeo, tipoPlanilla: detectarTipoPlanilla(mapeo) })
+  cambiar({ mapeo, tipoPlanilla: p.hoja.tipoManual ? p.hoja.tipoPlanilla : detectarTipoPlanilla(mapeo) })
 }
+
+const elegirTipo = (tipoPlanilla: TipoPlanilla) => cambiar({ tipoPlanilla, tipoManual: true })
 
 const cambiarTipoExtra = (indice: number, tipo: TipoCampo) =>
   cambiar({ mapeo: p.hoja.mapeo.map((o) => (o.indice === indice ? { ...o, tipoExtra: tipo } : o)) })
@@ -165,7 +170,7 @@ const cambiarTipoExtra = (indice: number, tipo: TipoCampo) =>
               { valor: 'pacientes', etiqueta: 'Pacientes' },
               { valor: 'pagos', etiqueta: 'Pagos' },
             ]"
-            @update:model-value="cambiar({ tipoPlanilla: $event as TipoPlanilla })"
+            @update:model-value="elegirTipo($event as TipoPlanilla)"
           />
         </div>
       </div>
@@ -176,12 +181,34 @@ const cambiarTipoExtra = (indice: number, tipo: TipoCampo) =>
         En pagos el RUN es opcional: las filas sin documento se guardan sin asociarse a un paciente.
       </p>
 
+      <div
+        v-if="sinDocumento"
+        class="flex flex-wrap items-start gap-x-4 gap-y-2 border-y border-borde bg-peligro-tenue/50 px-5 py-3 text-[13px]"
+        role="alert"
+      >
+        <TriangleAlert class="mt-0.5 size-4 shrink-0 text-peligro" aria-hidden="true" />
+        <div class="min-w-0 flex-1 space-y-1">
+          <p class="font-medium text-peligro">No se encontró una columna con el RUN o pasaporte.</p>
+          <p class="text-suave">
+            En la tabla de abajo, elija «RUN / pasaporte» en «Se guarda como» para la columna que contiene el
+            RUN/RUT de cada paciente.
+          </p>
+          <p class="text-suave">
+            Si esta hoja corresponde a pagos sin RUT asociado, indíquelo marcando el tipo de planilla «Pagos»:
+            los pagos se guardarán sin vincularse a un paciente.
+          </p>
+        </div>
+        <Boton tamano="sm" :disabled="ocupada" @click="elegirTipo('pagos')">
+          Es una planilla de pagos sin RUT
+        </Boton>
+      </div>
+
       <ul
-        v-if="problemas.length"
+        v-if="otrosProblemas.length"
         class="space-y-1 border-y border-borde bg-peligro-tenue/50 px-5 py-2.5 text-[13px] text-peligro"
         role="alert"
       >
-        <li v-for="x in problemas" :key="x">{{ x }}</li>
+        <li v-for="x in otrosProblemas" :key="x">{{ x }}</li>
       </ul>
 
       <div class="overflow-x-auto">
@@ -207,9 +234,12 @@ const cambiarTipoExtra = (indice: number, tipo: TipoCampo) =>
                 >
                   Coincidencia probable, confírmela
                 </p>
-                <p v-if="esIgnoradaPermanente(m.encabezado, ignoradas)" class="text-[11.5px]">
-                  Siempre se ignora
-                </p>
+                <template v-if="esIgnoradaPermanente(m.encabezado, ignoradas)">
+                  <Insignia v-if="m.destino === 'ignorar'" class="mt-1" :icono="ListFilter">
+                    Excluida por filtro predeterminado
+                  </Insignia>
+                  <p v-else class="text-[11.5px] text-tenue">Se importará pese al filtro predeterminado</p>
+                </template>
               </td>
               <td class="max-w-64 border-l border-borde px-5 py-2.5 text-suave">
                 <p class="truncate">
