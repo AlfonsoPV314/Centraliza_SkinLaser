@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, shallowRef, watch } from "vue"
-import { useRouter } from "vue-router"
-import { CheckCircle2, Download, FileSpreadsheet, FileText, FolderOpen, LoaderCircle, Pencil, Play, RotateCcw } from "@lucide/vue"
+import { RouterLink, useRouter } from "vue-router"
+import { CheckCircle2, Download, FileSpreadsheet, FileText, FolderOpen, LoaderCircle, Pencil, Play, RotateCcw, TriangleAlert } from "@lucide/vue"
 import { mensajeError, useInformarError, useNotificar, useServicios, useUsuario } from "@/application"
 import { CARACTERISTICAS } from "@/config/features"
 import type { ArchivoGenerado, EstadoDatos } from "@/contracts"
@@ -12,7 +12,7 @@ import { rangoAnio, rangoUsaHorario, rangoValido, type RangoFechas } from "@/dom
 import type { Plantilla } from "@/domain/templates"
 import { guardarArchivos } from "@/infrastructure/descargas"
 import { useRetardo } from "@/shared/hooks"
-import { Boton, Campo, EncabezadoPagina, EncabezadoTarjeta, Selector, Tarjeta, cn } from "@/shared/ui"
+import { Boton, Campo, Casilla, EncabezadoPagina, EncabezadoTarjeta, Selector, Tarjeta, cn } from "@/shared/ui"
 import EditorFiltros from "../componentes/EditorFiltros.vue"
 import Migas from "../componentes/Migas.vue"
 import SelectorPeriodo from "../componentes/SelectorPeriodo.vue"
@@ -57,11 +57,14 @@ const generando = computed(() => pasos.value !== null)
 const usarCarpeta = computed(() => CARACTERISTICAS.carpetaDescarga && !!usuario.value.preferencias.carpetaDescarga)
 const archivos = p.plantilla.archivos.filter((a) => CARACTERISTICAS.exportacion[a.formato])
 
+const porRevisar = p.estado.filasConError + p.estado.duplicadosPendientes
+const incluirPendientes = ref(false)
 const consulta = computed(() => ({
   campoFecha: campoFecha.value,
   rango: rango.value,
   filtros: filtros.value,
   unidad: p.plantilla.unidad,
+  incluirPendientes: incluirPendientes.value,
 }))
 const consultaRetardada = useRetardo(consulta, 400)
 watch(
@@ -106,7 +109,7 @@ async function generar() {
   try {
     const generados = await s.reportes.generar(
       token.value,
-      { plantillaId: p.plantilla.id, rango: rango.value, filtros: filtros.value, campoFecha: campoFecha.value },
+      { plantillaId: p.plantilla.id, rango: rango.value, filtros: filtros.value, campoFecha: campoFecha.value, incluirPendientes: incluirPendientes.value },
       (paso) => (pasos.value = [...(pasos.value ?? []), paso]),
     )
     pasos.value = [...(pasos.value ?? []), "Guardando los archivos"]
@@ -215,6 +218,21 @@ const hora = (d: Date) => d.toLocaleTimeString("es-CL", { hour: "2-digit", minut
             {{ conteo.sinHora.toLocaleString("es-CL") }} sin hora registrada;
             {{ rangoUsaHorario(rango) ? "no entran en el horario elegido" : "no aparecen en el mapa de calor" }}.
           </p>
+          <div
+            v-if="porRevisar"
+            class="mt-3 rounded-lg border border-aviso/30 bg-aviso/10 px-3 py-2.5 text-[12.5px]"
+            role="note"
+          >
+            <p class="flex gap-1.5 font-medium text-aviso">
+              <TriangleAlert class="mt-px size-3.5 shrink-0" aria-hidden="true" />
+              {{ porRevisar.toLocaleString("es-CL") }} {{ porRevisar === 1 ? "fila está pendiente" : "filas están pendientes" }} de revisión
+            </p>
+            <p class="mt-1 text-suave">
+              {{ incluirPendientes ? "Se incluirán tal como están, sin corregir." : "No se usarán en este reporte hasta que las revise." }}
+              <RouterLink :to="{ path: '/datos', query: { pestana: estado.filasConError ? 'errores' : 'duplicados' } }" class="text-acento underline-offset-4 hover:underline">Revisar</RouterLink>
+            </p>
+            <Casilla v-model="incluirPendientes" class="mt-2">Incluirlas de todos modos</Casilla>
+          </div>
           <p v-if="filtros.hijos.length" class="mt-3 border-t border-borde pt-3 text-[12.5px] text-tenue">
             {{ describirFiltro(filtros, etiqueta) }}
           </p>

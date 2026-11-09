@@ -27,7 +27,10 @@ const pestana = computed<Pestana>({
 })
 const estado = useCarga(() => s.datos.estado(token.value), [token])
 const catalogo = useCarga(() => s.datos.columnas(token.value), [token])
-useCambiosDatos(() => estado.recargar(true))
+useCambiosDatos(() => {
+  estado.recargar(true)
+  catalogo.recargar(true)
+})
 
 const pestanas = computed(() => {
   const e = estado.datos.value

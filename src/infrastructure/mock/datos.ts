@@ -1,4 +1,4 @@
-import type { Consulta, DatosApi, EstadoDatos } from "@/contracts/datos"
+import { COLUMNAS_PROTEGIDAS, type Consulta, type DatosApi, type EstadoDatos } from "@/contracts/datos"
 import { ERRORES } from "@/contracts/comunes"
 import type {
   ColumnaCatalogo,
@@ -14,14 +14,14 @@ import {
   definicion,
 } from "@/domain/columns"
 import { claveDuplicado, sonDuplicadas } from "@/domain/duplicates"
-import { evaluarFiltro } from "@/domain/filters"
+import { contarCondiciones, evaluarFiltro, type Grupo } from "@/domain/filters"
 import { evaluarRango, rangoUsaHorario } from "@/domain/ranges"
 import { aplanarFila, camposFaltantes, registrosACitas } from "@/domain/records"
 import { normalizarValor, tieneErrores } from "@/domain/rules"
-import { normalizarTexto } from "@/domain/text"
+import { coincideBusqueda } from "@/domain/text"
 import { db, datosCambiaron, versionDatos } from "./db"
 import { aGuardada, guardarFilas } from "./persistencia"
-import { ahora, error, esperar, uid, usuarioDeToken } from "./util"
+import { ahora, error, esperar, exigirAdmin, uid, usuarioDeToken } from "./util"
 import { registrarEvento } from "./auditoria"
 
 const describirFila = (f: { archivo: string; numero: number }) =>
@@ -37,14 +37,17 @@ let cache: { clave: string; registros: Registro[] } | null = null
 async function registrosBase(
   campoFecha: string,
   unidad: "filas" | "citas",
+  incluirPendientes = false,
 ): Promise<Registro[]> {
-  const clave = `${versionDatos()}|${campoFecha}|${unidad}`
+  const clave = `${versionDatos()}|${campoFecha}|${unidad}|${incluirPendientes}`
   if (cache?.clave === clave) return cache.registros
-  const [filas, pacientes, catalogo] = await Promise.all([
+  const [guardadas, pendientes, pacientes, catalogo] = await Promise.all([
     db.filas.toArray(),
+    incluirPendientes ? filasPendientes() : Promise.resolve([]),
     db.pacientes.toArray(),
     catalogoCompleto(),
   ])
+  const filas = [...guardadas, ...pendientes]
   const mp = new Map(pacientes.map((p) => [p.doc, p]))
   const mc = new Map(catalogo.map((c) => [c.clave, c]))
   let registros = filas.map((f) =>
@@ -63,8 +66,17 @@ export async function tipoDeCampo(): Promise<(c: string) => TipoCampo> {
   return (c) => m.get(c) ?? "texto"
 }
 
+/** Filas con errores y duplicados nuevos sin resolver, con forma de fila guardada (solo para consultas). */
+async function filasPendientes(): Promise<FilaGuardada[]> {
+  const [errores, dups] = await Promise.all([db.filasError.toArray(), db.pendientes.toArray()])
+  return [
+    ...errores.map((e) => ({ ...aGuardada(e.fila, e.importacionId), id: e.id })),
+    ...dups.map((d) => ({ ...aGuardada(d.nueva, d.importacionId), id: d.id })),
+  ]
+}
+
 export async function ejecutarConsulta(c: Consulta): Promise<Registro[]> {
-  const base = await registrosBase(c.campoFecha, c.unidad)
+  const base = await registrosBase(c.campoFecha, c.unidad, c.incluirPendientes)
   const tipoDe = await tipoDeCampo()
   return base.filter(
     (r) =>
@@ -90,6 +102,34 @@ async function guardarCorregida(importacionId: string, fila: FilaGuardada) {
       conteos: { ...imp.conteos, nuevas: imp.conteos.nuevas + 1 },
     })
   }
+}
+
+/** Filas guardadas que coinciden con la búsqueda libre y los filtros (evaluados sobre la fila aplanada). */
+async function buscarFilas(q: string, filtros: Grupo | null): Promise<FilaGuardada[]> {
+  let filas = await db.filas.toArray()
+  if (q.trim())
+    filas = filas.filter((f) =>
+      coincideBusqueda([f.doc, f.archivo, ...Object.values(f.campos).map((v) => v.o)], q),
+    )
+  if (filtros && contarCondiciones(filtros)) {
+    const [registros, tipoDe] = await Promise.all([
+      registrosBase("fecha_registro", "filas"),
+      tipoDeCampo(),
+    ])
+    const pasan = new Set(
+      registros.filter((r) => evaluarFiltro(filtros, r, tipoDe)).map((r) => r.__id),
+    )
+    filas = filas.filter((f) => pasan.has(f.id))
+  }
+  return filas
+}
+
+function describirBusqueda(b: { q: string; filtros: Grupo | null }) {
+  const partes = []
+  if (b.q.trim()) partes.push(`búsqueda «${b.q.trim()}»`)
+  const n = b.filtros ? contarCondiciones(b.filtros) : 0
+  if (n) partes.push(`${n} ${n === 1 ? "filtro" : "filtros"}`)
+  return partes.length ? `Todas las que coincidían con ${partes.join(" y ")}` : "Todas las filas guardadas"
 }
 
 export const datosMock: DatosApi = {
@@ -165,27 +205,89 @@ export const datosMock: DatosApi = {
     if (!claves.length) return []
     return db.filas.where("claveDup").anyOf(claves).toArray()
   },
-  async listarFilas(token, q, p) {
+  async listarFilas(token, q, p, filtros) {
     await usuarioDeToken(token)
     await esperar(120, 260)
-    const nq = normalizarTexto(q)
-    const filas = (await db.filas.toArray())
-      .filter(
-        (f) =>
-          !nq ||
-          normalizarTexto(
-            `${f.doc ?? ""} ${f.campos.nombre_completo?.o ?? ""} ${f.campos.concepto?.o ?? ""} ${f.archivo}`,
-          ).includes(nq),
-      )
-      .sort((a, b) =>
-        (b.fechaRegistro ?? "").localeCompare(a.fechaRegistro ?? ""),
-      )
+    const filas = (await buscarFilas(q, filtros ?? null)).sort((a, b) =>
+      (b.fechaRegistro ?? "").localeCompare(a.fechaRegistro ?? ""),
+    )
     return {
       items: filas.slice((p.pagina - 1) * p.porPagina, p.pagina * p.porPagina),
       total: filas.length,
       pagina: p.pagina,
       porPagina: p.porPagina,
     }
+  },
+  async eliminarFilas(token, seleccion) {
+    const u = await usuarioDeToken(token)
+    await esperar(250, 500)
+    const ids =
+      "ids" in seleccion
+        ? seleccion.ids
+        : (await buscarFilas(seleccion.busqueda.q, seleccion.busqueda.filtros)).map((f) => f.id)
+    if (!ids.length) return 0
+    let eliminadas = 0
+    await db.transaction("rw", [db.filas, db.pacientes], async () => {
+      const filas = (await db.filas.bulkGet(ids)).filter((f): f is FilaGuardada => !!f)
+      eliminadas = filas.length
+      await db.filas.bulkDelete(filas.map((f) => f.id))
+      // Un paciente sin filas restantes deja de existir: su ficha solo se arma desde las filas.
+      const docs = [...new Set(filas.map((f) => f.doc).filter((d): d is string => !!d))]
+      for (const doc of docs)
+        if (!(await db.filas.where("doc").equals(doc).count())) await db.pacientes.delete(doc)
+    })
+    datosCambiaron()
+    await registrarEvento(
+      u,
+      "datos",
+      `Eliminó ${eliminadas} ${eliminadas === 1 ? "fila" : "filas"} de forma permanente`,
+      "ids" in seleccion ? undefined : describirBusqueda(seleccion.busqueda),
+    )
+    return eliminadas
+  },
+  async usoColumnas(token) {
+    await usuarioDeToken(token)
+    await esperar(80, 180)
+    const uso: Record<string, number> = {}
+    await db.filas.each((f) => {
+      for (const [k, v] of Object.entries(f.campos)) if (v.o) uso[k] = (uso[k] ?? 0) + 1
+      if (f.doc) uso.documento = (uso.documento ?? 0) + 1
+      if (f.fechaRegistro) uso.fecha_registro = (uso.fecha_registro ?? 0) + 1
+      if (f.monto !== null) uso.monto = (uso.monto ?? 0) + 1
+    })
+    return uso
+  },
+  async eliminarColumna(token, clave) {
+    const u = await exigirAdmin(token)
+    await esperar(250, 500)
+    if ((COLUMNAS_PROTEGIDAS as readonly string[]).includes(clave))
+      throw error(
+        ERRORES.validacion,
+        "Esta columna identifica o fecha cada registro y no se puede eliminar.",
+      )
+    const catalogo = await catalogoCompleto()
+    const col = catalogo.find((c) => c.clave === clave)
+    if (!col) throw error(ERRORES.noEncontrado, "La columna ya no existe.")
+    let filas = 0
+    await db.transaction("rw", [db.filas, db.pacientes, db.columnas], async () => {
+      await db.filas.toCollection().modify((f) => {
+        if (!(clave in f.campos)) return
+        if (f.campos[clave]?.o) filas++
+        delete f.campos[clave]
+      })
+      await db.pacientes.toCollection().modify((pac) => {
+        if (clave in pac.campos) delete pac.campos[clave]
+      })
+      if (col.origen === "extra") await db.columnas.delete(clave)
+    })
+    datosCambiaron()
+    await registrarEvento(
+      u,
+      "datos",
+      `Eliminó la columna «${col.etiqueta}» de forma permanente`,
+      `${filas} ${filas === 1 ? "fila tenía" : "filas tenían"} valor`,
+    )
+    return { filas }
   },
   async filasConError(token) {
     await usuarioDeToken(token)

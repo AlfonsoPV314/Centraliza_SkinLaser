@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { claveDesdeEncabezado, limpiarOriginal, normalizarTexto } from "../text"
+import { claveDesdeEncabezado, coincideBusqueda, limpiarOriginal, normalizarTexto } from "../text"
 import { normalizarTelefono, correoValido } from "../contact"
 import { parsearFecha, parsearHora, semanaDelMes } from "../dates"
 import { parsearMonto } from "../format"
@@ -71,5 +71,22 @@ describe("fechas, teléfonos, correos y montos", () => {
     expect(neutralizarCelda("@SUM(A1)")).toBe(`'@SUM(A1)`)
     expect(neutralizarCelda(-5)).toBe(-5)
     expect(neutralizarCelda("Ana")).toBe("Ana")
+  })
+})
+
+describe("coincideBusqueda", () => {
+  const fila = ["12.345.678-5", "pagos.xlsx", "María López", "Dermatología", "Láser"]
+  it("busca en todas las columnas sin distinguir mayúsculas ni tildes", () => {
+    expect(coincideBusqueda(fila, "dermatologia")).toBe(true)
+    expect(coincideBusqueda(fila, "LASER")).toBe(true)
+    expect(coincideBusqueda(fila, "pagos")).toBe(true)
+  })
+  it("exige que cada palabra aparezca, aunque estén en columnas distintas", () => {
+    expect(coincideBusqueda(fila, "maria laser")).toBe(true)
+    expect(coincideBusqueda(fila, "maria pediatria")).toBe(false)
+  })
+  it("una búsqueda vacía coincide con todo e ignora valores nulos", () => {
+    expect(coincideBusqueda([null, undefined], "  ")).toBe(true)
+    expect(coincideBusqueda([null, "Ana"], "ana")).toBe(true)
   })
 })

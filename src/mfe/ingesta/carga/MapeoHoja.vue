@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from "vue"
-import { ChevronDown, EyeOff, FileSpreadsheet, ListFilter, TriangleAlert } from "@lucide/vue"
+import { ChevronDown, FileSpreadsheet, TriangleAlert } from "@lucide/vue"
 import {
   CAMPOS_CONOCIDOS,
   LISTA_CAMPOS_CONOCIDOS,
@@ -9,8 +9,9 @@ import {
 } from "@/domain/columns"
 import type { TipoCampo, TipoPlanilla } from "@/domain/model"
 import { claveDesdeEncabezado, limpiarOriginal } from "@/domain/text"
-import { Boton, Casilla, Insignia, Segmentado, Selector, cn } from "@/shared/ui"
-import { esIgnoradaPermanente, faltaDocumento, problemasMapeo } from "./preparar"
+import { Boton, Casilla, Detalles, Insignia, Segmentado, Selector, cn, type OpcionBuscable } from "@/shared/ui"
+import FilaMapeo from "./FilaMapeo.vue"
+import { faltaDocumento, problemasMapeo } from "./preparar"
 import type { HojaElegida } from "./tipos"
 
 const p = defineProps<{
@@ -32,14 +33,19 @@ const GRUPOS = [
   { grupo: "registro", etiqueta: "Registro en PhilaxMed" },
   { grupo: "pago", etiqueta: "Atención y pago" },
 ]
-const TIPOS_EXTRA: { valor: TipoCampo; etiqueta: string }[] = [
-  { valor: "texto", etiqueta: "Texto" },
-  { valor: "numero", etiqueta: "Número" },
-  { valor: "monto", etiqueta: "Monto" },
-  { valor: "fecha", etiqueta: "Fecha" },
+const OPCIONES: OpcionBuscable[] = [
+  ...GRUPOS.flatMap((g) =>
+    LISTA_CAMPOS_CONOCIDOS.filter((c) => CAMPOS_CONOCIDOS[c].grupo === g.grupo).map((c) => ({
+      valor: c,
+      etiqueta: CAMPOS_CONOCIDOS[c].etiqueta,
+      grupo: g.etiqueta,
+    })),
+  ),
+  { valor: "extra", etiqueta: "Columna adicional", grupo: "Otras", detalle: "se guarda con su nombre" },
+  { valor: "ignorar", etiqueta: "No importar", grupo: "Otras" },
 ]
-const camposDe = (grupo: string) =>
-  LISTA_CAMPOS_CONOCIDOS.filter((c) => CAMPOS_CONOCIDOS[c].grupo === grupo)
+const importadas = computed(() => p.hoja.mapeo.filter((m) => m.destino !== "ignorar"))
+const noImportadas = computed(() => p.hoja.mapeo.filter((m) => m.destino === "ignorar"))
 
 const abierta = ref(true)
 const a = computed(() => p.hoja.analisis)
@@ -221,78 +227,48 @@ const cambiarTipoExtra = (indice: number, tipo: TipoCampo) =>
             </tr>
           </thead>
           <tbody>
-            <tr
-              v-for="m in hoja.mapeo"
+            <FilaMapeo
+              v-for="m in importadas"
               :key="m.indice"
-              :class="cn('border-t border-borde', m.destino === 'ignorar' && 'bg-superficie-2/50 text-tenue')"
-            >
-              <td class="px-5 py-2.5">
-                <p class="font-medium">{{ m.encabezado }}</p>
-                <p
-                  v-if="m.confianza === 'media' && m.destino !== 'extra' && m.destino !== 'ignorar'"
-                  class="text-[11.5px] text-aviso"
-                >
-                  Coincidencia probable, confírmela
-                </p>
-                <template v-if="esIgnoradaPermanente(m.encabezado, ignoradas)">
-                  <Insignia v-if="m.destino === 'ignorar'" class="mt-1" :icono="ListFilter">
-                    Excluida por filtro predeterminado
-                  </Insignia>
-                  <p v-else class="text-[11.5px] text-tenue">Se importará pese al filtro predeterminado</p>
-                </template>
-              </td>
-              <td class="max-w-64 border-l border-borde px-5 py-2.5 text-suave">
-                <p class="truncate">
-                  <template v-if="ejemplosDe(m)">{{ ejemplosDe(m) }}</template>
-                  <span v-else class="text-tenue">Sin datos</span>
-                </p>
-              </td>
-              <td class="border-l border-borde px-5 py-2">
-                <div class="flex items-center gap-2">
-                  <Selector
-                    tamano="sm"
-                    class="flex-1"
-                    :model-value="m.destino"
-                    :disabled="ocupada"
-                    :aria-label="`Destino de «${m.encabezado}»`"
-                    @update:model-value="cambiarDestino(m.indice, String($event))"
-                  >
-                    <optgroup v-for="g in GRUPOS" :key="g.grupo" :label="g.etiqueta">
-                      <option v-for="c in camposDe(g.grupo)" :key="c" :value="c">
-                        {{ CAMPOS_CONOCIDOS[c].etiqueta }}
-                      </option>
-                    </optgroup>
-                    <optgroup label="Otras">
-                      <option value="extra">Columna adicional</option>
-                      <option value="ignorar">No importar</option>
-                    </optgroup>
-                  </Selector>
-                  <Selector
-                    v-if="m.destino === 'extra'"
-                    tamano="sm"
-                    class="w-28"
-                    :model-value="m.tipoExtra ?? 'texto'"
-                    aria-label="Tipo de dato"
-                    @update:model-value="cambiarTipoExtra(m.indice, $event as TipoCampo)"
-                  >
-                    <option v-for="t in TIPOS_EXTRA" :key="t.valor" :value="t.valor">{{ t.etiqueta }}</option>
-                  </Selector>
-                  <button
-                    v-if="m.destino === 'ignorar' && !esIgnoradaPermanente(m.encabezado, ignoradas)"
-                    type="button"
-                    class="flex size-8 shrink-0 items-center justify-center rounded-md text-tenue hover:bg-superficie-3 hover:text-texto"
-                    :title="`Ignorar «${m.encabezado}» siempre en próximas cargas`"
-                    :aria-label="`Ignorar «${m.encabezado}» siempre en próximas cargas`"
-                    @click="emit('ignorarSiempre', m.encabezado)"
-                  >
-                    <EyeOff class="size-4" />
-                  </button>
-                </div>
-              </td>
+              :m="m"
+              :ejemplos="ejemplosDe(m)"
+              :opciones="OPCIONES"
+              :ignoradas="ignoradas"
+              :ocupada="ocupada"
+              @destino="cambiarDestino(m.indice, $event)"
+              @tipo-extra="cambiarTipoExtra(m.indice, $event)"
+            />
+            <tr v-if="!importadas.length">
+              <td colspan="3" class="px-5 py-4 text-center text-tenue">Ninguna columna se importará de esta hoja.</td>
             </tr>
           </tbody>
         </table>
       </div>
+      <Detalles
+        v-if="noImportadas.length"
+        class="rounded-none! border-x-0! border-b-0! border-t-2!"
+        :resumen="`Columnas que no se importan (${noImportadas.length})`"
+      >
+        <div class="-mx-3.5 -my-3 overflow-x-auto">
+          <table class="w-full min-w-[760px] border-collapse text-left text-[13px]">
+            <caption class="sr-only">Columnas que no se importan</caption>
+            <tbody>
+              <FilaMapeo
+                v-for="m in noImportadas"
+                :key="m.indice"
+                :m="m"
+                :ejemplos="ejemplosDe(m)"
+                :opciones="OPCIONES"
+                :ignoradas="ignoradas"
+                :ocupada="ocupada"
+                @destino="cambiarDestino(m.indice, $event)"
+                @tipo-extra="cambiarTipoExtra(m.indice, $event)"
+                @ignorar-siempre="emit('ignorarSiempre', m.encabezado)"
+              />
+            </tbody>
+          </table>
+        </div>
+      </Detalles>
     </div>
   </section>
 </template>

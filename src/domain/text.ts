@@ -32,3 +32,14 @@ export function unirLista(items: string[], conector = "y"): string {
   if (items.length <= 1) return items.join("")
   return `${items.slice(0, -1).join(", ")} ${conector} ${items[items.length - 1]}`
 }
+
+/**
+ * Búsqueda libre sobre varios textos: cada palabra de `q` debe aparecer en alguno de ellos,
+ * sin distinguir mayúsculas ni tildes. Una búsqueda vacía coincide con todo.
+ */
+export function coincideBusqueda(textos: readonly (string | null | undefined)[], q: string): boolean {
+  const terminos = normalizarTexto(q).split(/\s+/).filter(Boolean)
+  if (!terminos.length) return true
+  const pajar = normalizarTexto(textos.filter(Boolean).join(" \u0000 "))
+  return terminos.every((t) => pajar.includes(t))
+}

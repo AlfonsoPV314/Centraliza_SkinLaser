@@ -28,7 +28,7 @@ import {
   EncabezadoTarjeta,
   Entrada,
   Segmentado,
-  Selector,
+  SelectorBuscable,
   Tarjeta,
   cn,
 } from "@/shared/ui"
@@ -75,7 +75,6 @@ const visibles = computed<Record<string, string>>(() =>
 const cantidadErrores = computed(() => Object.keys(errores.value).length)
 const sucio = computed(() => serializar(d.value) !== guardado.value)
 const totalBloques = computed(() => d.value.archivos.reduce((n, a) => n + a.bloques.length, 0))
-const campoFechaDesconocido = computed(() => !camposFecha.some((c) => c.clave === d.value.campoFecha))
 
 const cambiar = (parcial: Partial<DatosEditablesPlantilla>) => (d.value = { ...d.value, ...parcial })
 
@@ -273,15 +272,13 @@ const irAArchivo = (id: string) =>
           <div class="space-y-5">
             <div class="grid gap-4 sm:grid-cols-2">
               <Campo etiqueta="Campo de fecha del período" html-for="campo-campoFecha" :error="visibles.campoFecha">
-                <Selector
+                <SelectorBuscable
                   id="campo-campoFecha"
                   :model-value="d.campoFecha"
                   :invalido="!!visibles.campoFecha"
-                  @update:model-value="cambiar({ campoFecha: String($event ?? '') })"
-                >
-                  <option v-if="campoFechaDesconocido" :value="d.campoFecha">{{ d.campoFecha || "Elegir…" }}</option>
-                  <option v-for="c in camposFecha" :key="c.clave" :value="c.clave">{{ c.etiqueta }}</option>
-                </Selector>
+                  :opciones="camposFecha.map((c) => ({ valor: c.clave, etiqueta: c.etiqueta }))"
+                  @update:model-value="cambiar({ campoFecha: $event })"
+                />
               </Campo>
               <Campo
                 v-if="CARACTERISTICAS.consolidacionPagos || d.unidad === 'citas'"

@@ -40,11 +40,21 @@ export interface DuplicadoPendiente {
   creadaEn: string
 }
 
+/** Filas a eliminar: una lista explícita o todas las que coinciden con una búsqueda. */
+export type SeleccionFilas =
+  | { ids: string[] }
+  | { busqueda: { q: string; filtros: Grupo | null } }
+
+/** Columnas estructurales que no se pueden eliminar. */
+export const COLUMNAS_PROTEGIDAS = ["documento", "fecha_registro", "monto"] as const
+
 export interface Consulta {
   campoFecha: string
   rango: RangoFechas | null
   filtros: Grupo
   unidad: "filas" | "citas"
+  /** Incluir filas con errores y duplicados sin resolver (por defecto solo los datos guardados). */
+  incluirPendientes?: boolean
 }
 
 export interface DatosApi {
@@ -60,12 +70,22 @@ export interface DatosApi {
   ): Promise<string[]>
   /** POST /datos/v1/duplicados/consulta { claves } → filas guardadas con esas claves */
   buscarPorClaves(token: string, claves: string[]): Promise<FilaGuardada[]>
-  /** GET /datos/v1/filas?q=&pagina= */
+  /** POST /datos/v1/filas/consulta { q, filtros, pagina } — búsqueda libre más filtros por cualquier columna */
   listarFilas(
     token: string,
     q: string,
     p: ParametrosPagina,
+    filtros?: Grupo | null,
   ): Promise<Pagina<FilaGuardada>>
+  /**
+   * POST /datos/v1/filas/eliminar { ids } | { busqueda } → cantidad eliminada.
+   * Irreversible: las filas no pasan al historial ni pueden restaurarse.
+   */
+  eliminarFilas(token: string, seleccion: SeleccionFilas): Promise<number>
+  /** GET /datos/v1/columnas/uso → cantidad de filas con valor en cada columna */
+  usoColumnas(token: string): Promise<Record<string, number>>
+  /** DELETE /datos/v1/columnas/{clave} → borra la columna y sus valores en todas las filas. Irreversible. */
+  eliminarColumna(token: string, clave: string): Promise<{ filas: number }>
 
   /** GET /datos/v1/filas-con-error */
   filasConError(token: string): Promise<FilaConError[]>

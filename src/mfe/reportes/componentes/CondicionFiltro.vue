@@ -4,7 +4,7 @@ import { X } from "@lucide/vue"
 import { useServicios, useUsuario } from "@/application"
 import type { ColumnaCatalogo } from "@/domain/model"
 import { ETIQUETAS_OPERADOR, OPERADORES_POR_TIPO, type Condicion, type Operador } from "@/domain/filters"
-import { Boton, Entrada, Selector, SelectorMultiple } from "@/shared/ui"
+import { Boton, Entrada, Selector, SelectorBuscable, SelectorMultiple } from "@/shared/ui"
 import { tipoDe } from "./filtros"
 
 const c = defineModel<Condicion>({ required: true })
@@ -17,7 +17,7 @@ const tipo = computed(() => tipoDe(p.columnas, c.value.campo))
 const operadores = computed(() => OPERADORES_POR_TIPO[tipo.value])
 const tipoEntrada = computed(() => (tipo.value === "fecha" ? "date" : tipo.value === "hora" ? "time" : "text"))
 const sinValor = computed(() => c.value.operador === "vacio" || c.value.operador === "no_vacio")
-const campoDesconocido = computed(() => !p.columnas.some((x) => x.clave === c.value.campo))
+const opcionesCampo = computed(() => p.columnas.map((x) => ({ valor: x.clave, etiqueta: x.etiqueta })))
 
 function cambiarCampo(campo: string) {
   const ops = OPERADORES_POR_TIPO[tipoDe(p.columnas, campo)]
@@ -52,10 +52,13 @@ const opcionesLista = computed(() =>
 
 <template>
   <div class="flex flex-wrap items-center gap-2">
-    <Selector class="w-48" aria-label="Campo" :model-value="c.campo" @update:model-value="cambiarCampo(String($event))">
-      <option v-if="campoDesconocido" :value="c.campo">{{ c.campo }}</option>
-      <option v-for="x in columnas" :key="x.clave" :value="x.clave">{{ x.etiqueta }}</option>
-    </Selector>
+    <SelectorBuscable
+      class="w-56"
+      aria-label="Campo"
+      :model-value="c.campo"
+      :opciones="opcionesCampo"
+      @update:model-value="cambiarCampo($event)"
+    />
     <Selector
       class="w-40"
       aria-label="Operador"

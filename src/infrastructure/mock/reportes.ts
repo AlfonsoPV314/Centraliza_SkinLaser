@@ -55,6 +55,7 @@ export const reportesMock: ReportesApi = {
       rango: p.rango,
       filtros: p.filtros,
       unidad: plantilla.unidad,
+      incluirPendientes: p.incluirPendientes,
     }
     const registros = await ejecutarConsulta(consulta)
     if (!registros.length)

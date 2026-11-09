@@ -8,6 +8,8 @@ export interface PeticionReporte {
   rango: RangoFechas
   filtros: Grupo
   campoFecha: string
+  /** Incluir también filas con errores y duplicados sin resolver (por defecto se excluyen). */
+  incluirPendientes?: boolean
 }
 
 export interface ArchivoGenerado {
