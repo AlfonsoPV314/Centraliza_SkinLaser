@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, shallowRef, watch } from "vue"
+import PrevisualizadorArchivos from "./PrevisualizadorArchivos.vue"
 import { RouterLink, useRouter } from "vue-router"
 import { CheckCircle2, Download, FileSpreadsheet, FileText, FolderOpen, LoaderCircle, Pencil, Play, RotateCcw, TriangleAlert } from "@lucide/vue"
 import { mensajeError, useInformarError, useNotificar, useServicios, useUsuario } from "@/application"
@@ -66,6 +67,16 @@ const consulta = computed(() => ({
   unidad: p.plantilla.unidad,
   incluirPendientes: incluirPendientes.value,
 }))
+const peticion = computed(() => ({
+  plantillaId: p.plantilla.id,
+  rango: rango.value,
+  filtros: filtros.value,
+  campoFecha: campoFecha.value,
+  incluirPendientes: incluirPendientes.value,
+}))
+const noSePuede = computed(
+  () => !valido.value || !archivos.length || conteo.value?.total === 0 || pendiente.value,
+)
 const consultaRetardada = useRetardo(consulta, 400)
 watch(
   [consultaRetardada, token],
@@ -245,6 +256,8 @@ const hora = (d: Date) => d.toLocaleTimeString("es-CL", { hour: "2-digit", minut
               <span class="ml-auto text-[12px] text-tenue">{{ a.formato === "excel" ? "xlsx" : "pdf" }}</span>
             </li>
           </ul>
+
+          <PrevisualizadorArchivos :peticion="peticion" :deshabilitado="noSePuede" />
 
           <Boton
             variante="primario"

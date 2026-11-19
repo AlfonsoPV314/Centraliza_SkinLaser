@@ -1,4 +1,4 @@
-import type { ArchivoGenerado, ReportesApi } from "@/contracts/reportes"
+import type { ArchivoGenerado, ReportesApi, PeticionReporte } from "@/contracts/reportes"
 import { ERRORES } from "@/contracts/comunes"
 import { CARACTERISTICAS } from "@/config/features"
 import { diasEntre, sumarDias } from "@/domain/dates"
@@ -34,87 +34,99 @@ async function periodoAnterior(
   )
 }
 
+async function construir(
+  token: string,
+  p: PeticionReporte,
+  alAvanzar?: (paso: string) => void,
+) {
+  await usuarioDeToken(token)
+  const plantilla = await db.plantillas.get(p.plantillaId)
+  if (!plantilla || plantilla.eliminadaEn)
+    throw error(ERRORES.noEncontrado, "La plantilla ya no existe.")
+  const archivos = plantilla.archivos.filter(
+    (a) => CARACTERISTICAS.exportacion[a.formato],
+  )
+  if (!archivos.length)
+    throw error(
+      ERRORES.validacion,
+      "La plantilla no tiene archivos para generar. Agregue al menos un archivo Excel o PDF.",
+    )
+
+  alAvanzar?.("Consultando los datos del período")
+  const consulta = {
+    campoFecha: p.campoFecha,
+    rango: p.rango,
+    filtros: p.filtros,
+    unidad: plantilla.unidad,
+    incluirPendientes: p.incluirPendientes,
+  }
+  const registros = await ejecutarConsulta(consulta)
+  if (!registros.length)
+    throw error(
+      ERRORES.validacion,
+      "No hay filas que coincidan con el período y los filtros elegidos. Amplíe el período o quite algún filtro.",
+    )
+
+  const {
+    prepararArchivo,
+    necesitaAnterior,
+    nombreArchivo,
+    etiquetaColumna,
+  } = await import("../export/contenido")
+  const columnas = await catalogoCompleto()
+  const anteriores = necesitaAnterior(plantilla)
+    ? await periodoAnterior(registros, consulta)
+    : null
+  const periodo = describirRango(p.rango)
+    .replace(/^Se incluirán: /, "")
+    .replace(/\.$/, "")
+  const filtros = describirFiltro(p.filtros, (c) =>
+    etiquetaColumna(columnas, c),
+  )
+  const ctx = { plantilla, registros, anteriores, columnas, periodo }
+
+  const generados: ArchivoGenerado[] = []
+  for (const a of archivos) {
+    alAvanzar?.(
+      `Generando «${a.nombre}» (${a.formato === "excel" ? "Excel" : "PDF"})`,
+    )
+    const bloques = prepararArchivo(a, ctx)
+    const meta = {
+      titulo: a.nombre,
+      plantilla: plantilla.nombre,
+      periodo,
+      filtros,
+      filas: registros.length,
+    }
+    if (a.formato === "excel") {
+      const { generarExcel } = await import("../export/excel")
+      generados.push({
+        nombre: nombreArchivo(plantilla, a, "xlsx"),
+        formato: "excel",
+        contenido: await generarExcel(bloques, meta),
+      })
+    } else {
+      const { generarPdf } = await import("../export/pdf")
+      generados.push({
+        nombre: nombreArchivo(plantilla, a, "pdf"),
+        formato: "pdf",
+        contenido: await generarPdf(bloques, meta),
+      })
+    }
+  }
+  return {plantilla, generados}
+}
+
 export const reportesMock: ReportesApi = {
   async generar(token, p, alAvanzar) {
-    await usuarioDeToken(token)
-    const plantilla = await db.plantillas.get(p.plantillaId)
-    if (!plantilla || plantilla.eliminadaEn)
-      throw error(ERRORES.noEncontrado, "La plantilla ya no existe.")
-    const archivos = plantilla.archivos.filter(
-      (a) => CARACTERISTICAS.exportacion[a.formato],
-    )
-    if (!archivos.length)
-      throw error(
-        ERRORES.validacion,
-        "La plantilla no tiene archivos para generar. Agregue al menos un archivo Excel o PDF.",
-      )
-
-    alAvanzar?.("Consultando los datos del período")
-    const consulta = {
-      campoFecha: p.campoFecha,
-      rango: p.rango,
-      filtros: p.filtros,
-      unidad: plantilla.unidad,
-      incluirPendientes: p.incluirPendientes,
-    }
-    const registros = await ejecutarConsulta(consulta)
-    if (!registros.length)
-      throw error(
-        ERRORES.validacion,
-        "No hay filas que coincidan con el período y los filtros elegidos. Amplíe el período o quite algún filtro.",
-      )
-
-    const {
-      prepararArchivo,
-      necesitaAnterior,
-      nombreArchivo,
-      etiquetaColumna,
-    } = await import("../export/contenido")
-    const columnas = await catalogoCompleto()
-    const anteriores = necesitaAnterior(plantilla)
-      ? await periodoAnterior(registros, consulta)
-      : null
-    const periodo = describirRango(p.rango)
-      .replace(/^Se incluirán: /, "")
-      .replace(/\.$/, "")
-    const filtros = describirFiltro(p.filtros, (c) =>
-      etiquetaColumna(columnas, c),
-    )
-    const ctx = { plantilla, registros, anteriores, columnas, periodo }
-
-    const generados: ArchivoGenerado[] = []
-    for (const a of archivos) {
-      alAvanzar?.(
-        `Generando «${a.nombre}» (${a.formato === "excel" ? "Excel" : "PDF"})`,
-      )
-      const bloques = prepararArchivo(a, ctx)
-      const meta = {
-        titulo: a.nombre,
-        plantilla: plantilla.nombre,
-        periodo,
-        filtros,
-        filas: registros.length,
-      }
-      if (a.formato === "excel") {
-        const { generarExcel } = await import("../export/excel")
-        generados.push({
-          nombre: nombreArchivo(plantilla, a, "xlsx"),
-          formato: "excel",
-          contenido: await generarExcel(bloques, meta),
-        })
-      } else {
-        const { generarPdf } = await import("../export/pdf")
-        generados.push({
-          nombre: nombreArchivo(plantilla, a, "pdf"),
-          formato: "pdf",
-          contenido: await generarPdf(bloques, meta),
-        })
-      }
-    }
+    const { plantilla, generados } = await construir(token, p, alAvanzar)
     await db.plantillas.put({
       ...plantilla,
       uso: { veces: plantilla.uso.veces + 1, ultimoUso: ahora() },
     })
     return generados
+  },
+  async previsualizar(token, p, alAvanzar) {
+    return (await construir(token, p, alAvanzar)).generados
   },
 }

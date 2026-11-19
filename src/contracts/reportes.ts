@@ -26,4 +26,6 @@ export interface ReportesApi {
     p: PeticionReporte,
     alAvanzar?: (paso: string) => void,
   ): Promise<ArchivoGenerado[]>
+
+  previsualizar(token: string, p: PeticionReporte, alAvanzar?: (paso: string) => void): Promise<ArchivoGenerado[]>
 }
